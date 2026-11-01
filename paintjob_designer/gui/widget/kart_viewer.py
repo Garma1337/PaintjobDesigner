@@ -229,13 +229,9 @@ class KartViewer(QOpenGLWidget):
             self._camera.fit_to_bounds(positions)
 
             # Group triangles by blend mode so paintGL can issue one draw
-            # call per mode with the right GL blend state. Fall back to
-            # all-Standard if the assembly has no blend_modes.
-            blend_modes = list(assembled.blend_modes) or [
-                BlendingMode.Standard
-            ] * assembled.triangle_count
+            # call per mode with the right GL blend state.
             self._pending_blend_indices = self._blend_grouper.group_triangle_indices(
-                blend_modes,
+                assembled.blend_modes,
             )
 
         self.update()

@@ -6,6 +6,7 @@ from typing import Annotated, Any, ClassVar
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer
 
 from paintjob_designer.constants import CLUT_PALETTE_SIZE
+from paintjob_designer.models.asset_library import AssetLibrary
 from paintjob_designer.models.color import PsxColor
 from paintjob_designer.models.profile import KartType
 
@@ -93,30 +94,11 @@ class Paintjob(BaseModel):
         return any(slot.pixels for slot in self.slots.values())
 
 
-class PaintjobLibrary(BaseModel):
-    """Ordered collection of paintjobs the session is working on."""
-
-    model_config = ConfigDict(frozen=False)
-
+class PaintjobLibrary(AssetLibrary[Paintjob]):
     paintjobs: list[Paintjob] = Field(default_factory=list)
 
-    def count(self) -> int:
-        return len(self.paintjobs)
-
-    def add(self, paintjob: Paintjob) -> int:
-        """Append `paintjob` to the library and return its new index."""
-        self.paintjobs.append(paintjob)
-        return len(self.paintjobs) - 1
-
-    def remove(self, index: int) -> Paintjob:
-        """Pop the paintjob at `index` and return it."""
-        return self.paintjobs.pop(index)
-
-    def move(self, from_index: int, to_index: int) -> None:
-        """Reorder: move a paintjob to a new position."""
-        pj = self.paintjobs.pop(from_index)
-        to_index = max(0, min(to_index, len(self.paintjobs)))
-        self.paintjobs.insert(to_index, pj)
+    def _items(self) -> list[Paintjob]:
+        return self.paintjobs
 
     def find_by_base_character(self, character_id: str) -> Paintjob | None:
         """Return the paintjob whose `base_character_id` matches, or None."""

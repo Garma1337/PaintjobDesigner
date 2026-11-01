@@ -17,8 +17,6 @@ class LibraryController(QObject, Generic[TItem, TLibrary]):
     selection_changed = Signal(object)
     library_changed = Signal()
     mutated = Signal()
-    # Assets were imported or replaced wholesale. Undo commands hold refs to
-    # the old SlotColors, so the undo history can't span this.
     library_reset = Signal()
 
     def __init__(

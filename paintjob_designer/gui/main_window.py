@@ -328,27 +328,27 @@ class MainWindow(QMainWindow):
         pjc = self._paintjob_controller
         pjc.selection_changed.connect(self._on_paintjob_selection_changed)
         pjc.library_changed.connect(self._on_library_changed)
-        pjc.library_reset.connect(self._undo_stack_clear_safely)
+        pjc.library_reset.connect(self._invalidate_undo)
         pjc.mutated.connect(self._schedule_autosave)
 
         skc = self._skin_controller
         skc.selection_changed.connect(self._on_skin_selection_changed)
         skc.library_changed.connect(self._on_library_changed)
-        skc.library_reset.connect(self._undo_stack_clear_safely)
+        skc.library_reset.connect(self._invalidate_undo)
         skc.mutated.connect(self._schedule_autosave)
 
         whc = self._wheel_controller
         whc.selection_changed.connect(self._on_wheel_selection_changed)
         whc.library_changed.connect(self._on_library_changed)
-        whc.library_reset.connect(self._undo_stack_clear_safely)
+        whc.library_reset.connect(self._invalidate_undo)
         whc.mutated.connect(self._schedule_autosave)
 
         plc = self._palette_controller
         plc.save_from_slot_requested.connect(self._on_save_palette_from_slot)
         plc.mutated.connect(self._schedule_autosave)
 
-    def _undo_stack_clear_safely(self) -> None:
-        """Drop the undo stack — used when controllers reset their library."""
+    def _invalidate_undo(self) -> None:
+        """Drop the undo history: its commands hold refs to the replaced SlotColors."""
         if hasattr(self, "_undo_stack"):
             self._undo_stack.clear()
 
@@ -2404,8 +2404,7 @@ class MainWindow(QMainWindow):
         return written
 
     def _after_texture_import(self, slot_name: str, source_label: str) -> None:
-        # Undo commands hold the old refs; see `LibraryController.library_reset`.
-        self._undo_stack.clear()
+        self._invalidate_undo()
         self._populate_slot_editor()
         self._reload_preview()
         self._schedule_autosave()
@@ -2460,8 +2459,7 @@ class MainWindow(QMainWindow):
 
         asset.slots[slot_name] = SlotColors(colors=list(slot.colors), pixels=[])
 
-        # Undo commands hold the old refs; see `LibraryController.library_reset`.
-        self._undo_stack.clear()
+        self._invalidate_undo()
         self._populate_slot_editor()
         self._reload_preview()
         self._schedule_autosave()
@@ -2530,8 +2528,7 @@ class MainWindow(QMainWindow):
             ],
         )
 
-        # Undo commands hold the old refs; see `LibraryController.library_reset`.
-        self._undo_stack.clear()
+        self._invalidate_undo()
         self._populate_slot_editor()
         self._reload_preview()
         self._schedule_autosave()
