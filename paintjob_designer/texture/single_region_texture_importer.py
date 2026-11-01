@@ -1,20 +1,11 @@
 # coding: utf-8
 
-from enum import Enum
 from pathlib import Path
 
 from PIL import Image
 
-from paintjob_designer.models import QuantizedTexture
+from paintjob_designer.models import QuantizedTexture, SizeMismatchMode
 from paintjob_designer.texture.texture_quantizer import TextureQuantizer
-
-
-class SizeMismatchMode(Enum):
-    """How to handle a source image that doesn't match the target dimensions."""
-
-    REJECT = "reject"
-    SCALE = "scale"       # Lanczos-resize to target (ignores aspect ratio)
-    CENTER_CROP = "crop"  # Center-crop; requires source >= target on both axes
 
 
 class SingleRegionTextureImporter:

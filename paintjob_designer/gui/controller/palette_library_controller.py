@@ -1,8 +1,8 @@
 # coding: utf-8
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
-from PIL import Image
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget
 
@@ -10,11 +10,14 @@ from paintjob_designer.color.converter import ColorConverter
 from paintjob_designer.gui.controller.library_controller import LibraryController
 from paintjob_designer.gui.dialog.palette_edit_dialog import PaletteEditDialog
 from paintjob_designer.gui.util.dialogs import FilePicker, InputPrompt, MessageDialog
+from paintjob_designer.gui.util.disposed_after import DisposedAfter
 from paintjob_designer.gui.widget.color_picker import PsxColorPicker
 from paintjob_designer.gui.widget.palette_sidebar import PaletteSidebar
 from paintjob_designer.models import Palette, PaletteLibrary, PsxColor
 from paintjob_designer.palette.palette_from_colors_creator import PaletteFromColorsCreator
-from paintjob_designer.palette.palette_from_image_creator import PaletteFromImageCreator
+
+if TYPE_CHECKING:
+    from paintjob_designer.palette.palette_from_image_creator import PaletteFromImageCreator
 
 
 class PaletteLibraryController(LibraryController[Palette, PaletteLibrary]):
@@ -27,7 +30,7 @@ class PaletteLibraryController(LibraryController[Palette, PaletteLibrary]):
         message: MessageDialog,
         prompt: InputPrompt,
         files: FilePicker,
-        palette_from_image_creator: PaletteFromImageCreator,
+        palette_from_image_provider: Callable[[], "PaletteFromImageCreator"],
         palette_from_colors_creator: PaletteFromColorsCreator,
         color_picker: PsxColorPicker,
         parent: QWidget | None = None,
@@ -38,7 +41,7 @@ class PaletteLibraryController(LibraryController[Palette, PaletteLibrary]):
         self._picker = color_picker
         self._prompt = prompt
         self._files = files
-        self._palette_from_image = palette_from_image_creator
+        self._palette_from_image = palette_from_image_provider
         self._palette_from_colors = palette_from_colors_creator
 
         self._sidebar.new_palette_requested.connect(self.new)
@@ -91,8 +94,7 @@ class PaletteLibraryController(LibraryController[Palette, PaletteLibrary]):
             return
 
         try:
-            with Image.open(path) as src:
-                palette = self._palette_from_image.create(src, Path(path).stem)
+            palette = self._palette_from_image().create_from_file(Path(path))
         except (OSError, ValueError) as exc:
             self._message.error(
                 self._parent_widget, "Palette from image failed", str(exc),
@@ -131,14 +133,14 @@ class PaletteLibraryController(LibraryController[Palette, PaletteLibrary]):
     ) -> None:
         """Open the edit dialog for `seed`. On accept, append (replace_index
         is None) or replace at the given index."""
-        dialog = PaletteEditDialog(
+        with DisposedAfter(PaletteEditDialog(
             seed, self._converter, self._picker, parent=self._parent_widget,
-        )
+        )) as dialog:
+            if dialog.exec() != PaletteEditDialog.DialogCode.Accepted:
+                return
 
-        if dialog.exec() != PaletteEditDialog.DialogCode.Accepted:
-            return
+            result = dialog.resulting_palette()
 
-        result = dialog.resulting_palette()
         if replace_index is None:
             self._library.palettes.append(result)
             selected = len(self._library.palettes) - 1

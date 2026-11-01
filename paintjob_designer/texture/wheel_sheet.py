@@ -1,5 +1,7 @@
 # coding: utf-8
 
+from pathlib import Path
+
 from PIL import Image
 
 from paintjob_designer.models import WHEEL_FRAME_COUNT, WHEEL_FRAME_SIZE, PsxColor, QuantizedTexture
@@ -18,6 +20,10 @@ class WheelSheet:
     def __init__(self, quantizer: TextureQuantizer, exporter: TextureExporter) -> None:
         self._quantizer = quantizer
         self._exporter = exporter
+
+    def from_file(self, path: Path) -> list[QuantizedTexture]:
+        with Image.open(path) as image:
+            return self.from_image(image)
 
     def to_image(self, frames: list[tuple[bytes, list[PsxColor]]]) -> Image.Image:
         if len(frames) != WHEEL_FRAME_COUNT:

@@ -5,6 +5,7 @@ from typing import Callable
 from PySide6.QtWidgets import QWidget
 
 from paintjob_designer.gui.dialog.pick_character_dialog import PickCharacterDialog
+from paintjob_designer.gui.util.disposed_after import DisposedAfter
 from paintjob_designer.models import CharacterProfile, KartType, Profile
 
 
@@ -27,16 +28,17 @@ class CharacterPicker:
         if profile is None or not profile.characters:
             return None
 
-        dialog = PickCharacterDialog(
+        with DisposedAfter(PickCharacterDialog(
             profile.characters,
             title=title,
             kart_type_filter=kart_type_filter,
             parent=parent,
-        )
-        if dialog.exec() != PickCharacterDialog.DialogCode.Accepted:
-            return None
+        )) as dialog:
+            if dialog.exec() != PickCharacterDialog.DialogCode.Accepted:
+                return None
 
-        chosen_id = dialog.selected_character_id()
+            chosen_id = dialog.selected_character_id()
+
         if chosen_id is None:
             return None
 

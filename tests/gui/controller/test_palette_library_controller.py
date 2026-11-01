@@ -58,7 +58,7 @@ def controller(
         message=fake_message,
         prompt=fake_prompt,
         files=fake_files,
-        palette_from_image_creator=fake_palette_from_image_creator,
+        palette_from_image_provider=lambda: fake_palette_from_image_creator,
         palette_from_colors_creator=fake_palette_from_colors_creator,
         color_picker=MagicMock(),
     )

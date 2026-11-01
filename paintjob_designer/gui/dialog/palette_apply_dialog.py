@@ -136,9 +136,7 @@ class PaletteApplyDialog(QDialog):
         self._list.setItemDelegate(_MappingRowDelegate(self._converter, self._list))
         # Row moves need a redraw of *all* rows since the left-column
         # slot index comes from the row position, not from item data.
-        self._list.model().rowsMoved.connect(
-            lambda *_: self._list.viewport().update(),
-        )
+        self._list.model().rowsMoved.connect(self._on_rows_moved)
 
         for color in palette.colors:
             item = QListWidgetItem()
@@ -157,6 +155,9 @@ class PaletteApplyDialog(QDialog):
         layout.addWidget(buttons)
 
         self.resize(420, 520)
+
+    def _on_rows_moved(self) -> None:
+        self._list.viewport().update()
 
     def ordered_colors(self) -> list[PsxColor]:
         """Return palette colors in their current (possibly reordered) list order."""

@@ -1,195 +1,213 @@
 # coding: utf-8
 
-from pathlib import Path
-
-from paintjob_designer.color.converter import ColorConverter
-from paintjob_designer.color.gradient import GradientGenerator
-from paintjob_designer.color.transform import ColorTransformer
-from paintjob_designer.config.iso_root_validator import IsoRootValidator
-from paintjob_designer.config.store import ConfigStore
-from paintjob_designer.core import Container, Slugifier
-from paintjob_designer.ctr.animation import AnimationDecoder
-from paintjob_designer.ctr.reader import CtrModelReader
-from paintjob_designer.ctr.vertex_assembler import VertexAssembler
-from paintjob_designer.gui.app_icon import AppIcon
-from paintjob_designer.gui.controller.character_picker import CharacterPicker
-from paintjob_designer.gui.controller.paintjob_library_controller import PaintjobLibraryController
-from paintjob_designer.gui.controller.palette_library_controller import PaletteLibraryController
-from paintjob_designer.gui.controller.profile_holder import ProfileHolder
-from paintjob_designer.gui.controller.skin_library_controller import SkinLibraryController
-from paintjob_designer.gui.controller.wheel_library_controller import WheelLibraryController
-from paintjob_designer.gui.handler.character_handler import CharacterHandler
-from paintjob_designer.gui.handler.color_handler import ColorHandler
-from paintjob_designer.gui.handler.project_handler import ProjectHandler
-from paintjob_designer.gui.util.dialogs import FilePicker, InputPrompt, MessageDialog
-from paintjob_designer.gui.util.library_writer import LibraryWriter
-from paintjob_designer.gui.widget.color_picker import PsxColorPicker
-from paintjob_designer.gui.widget.kart_viewer import KartViewer
-from paintjob_designer.gui.widget.paintjob_library_sidebar import PaintjobLibrarySidebar
-from paintjob_designer.gui.widget.palette_sidebar import PaletteSidebar
-from paintjob_designer.gui.widget.preview_sidebar import PreviewSidebar
-from paintjob_designer.gui.widget.skin_library_sidebar import SkinLibrarySidebar
-from paintjob_designer.gui.widget.wheel_library_sidebar import WheelLibrarySidebar
-from paintjob_designer.gui.widget.slot_editor import SlotEditor
-from paintjob_designer.gui.widget.vertex_slot_editor import VertexSlotEditor
-from paintjob_designer.paintjob.reader import PaintjobReader
-from paintjob_designer.paintjob.writer import PaintjobWriter
-from paintjob_designer.palette.palette_from_colors_creator import PaletteFromColorsCreator
-from paintjob_designer.palette.palette_from_image_creator import PaletteFromImageCreator
-from paintjob_designer.profile.reader import ProfileReader
-from paintjob_designer.profile.loader import ProfileLoader
-from paintjob_designer.profile.skin_slot_deriver import SkinSlotDeriver
-from paintjob_designer.render.atlas_renderer import AtlasRenderer
-from paintjob_designer.render.atlas_uv_mapper import AtlasUvMapper
-from paintjob_designer.render.blend_mode_grouper import BlendModeGrouper
-from paintjob_designer.render.preview_image_writer import PreviewImageWriter
-from paintjob_designer.render.ray_picker import RayTrianglePicker
-from paintjob_designer.render.slot_region_deriver import SlotRegionDeriver
-from paintjob_designer.render.wheel_geometry import WheelGeometry
-from paintjob_designer.skin.reader import SkinReader
-from paintjob_designer.skin.writer import SkinWriter
-from paintjob_designer.texture.four_bpp_codec import FourBppCodec
-from paintjob_designer.texture.multi_region_texture_importer import MultiRegionTextureImporter
-from paintjob_designer.texture.single_region_texture_importer import SingleRegionTextureImporter
-from paintjob_designer.texture.texture_exporter import TextureExporter
-from paintjob_designer.texture.texture_quantizer import TextureQuantizer
-from paintjob_designer.texture.wheel_sheet import WheelSheet
-from paintjob_designer.wheel.reader import WheelReader
-from paintjob_designer.wheel.writer import WheelWriter
-from paintjob_designer.texture.texture_rotator import TextureRotator
-from paintjob_designer.vram.cache import VramCache
-from paintjob_designer.vram.reader import VramReader
-
-
-def _default_config_path() -> Path:
-    """Resolve the platform's app-data path for the persisted config blob."""
-    from PySide6.QtCore import QStandardPaths
-    base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
-    return Path(base) / "paintjob-designer" / "config.json"
-
+from paintjob_designer.core import Container
 
 container = Container()
 
-container.register("config_store", lambda c: ConfigStore(_default_config_path()))
-container.register("iso_root_validator", lambda c: IsoRootValidator())
-container.register("slugifier", lambda c: Slugifier())
-container.register("app_icon", lambda c: AppIcon())
-container.register("color_converter", lambda c: ColorConverter())
-container.register("color_transformer", lambda c: ColorTransformer(c.resolve("color_converter")))
-container.register("gradient_generator", lambda c: GradientGenerator(c.resolve("color_converter")))
-container.register("ray_triangle_picker", lambda c: RayTrianglePicker())
-container.register("blend_mode_grouper", lambda c: BlendModeGrouper())
-container.register("profile_reader", lambda c: ProfileReader())
-container.register("skin_slot_deriver", lambda c: SkinSlotDeriver())
-container.register("animation_decoder", lambda c: AnimationDecoder())
-container.register("ctr_model_reader", lambda c: CtrModelReader(c.resolve("animation_decoder")))
-container.register("profile_loader", lambda c: ProfileLoader(
-    c.resolve("profile_reader"), c.resolve("ctr_model_reader"), c.resolve("skin_slot_deriver"),
-))
-container.register("vertex_assembler", lambda c: VertexAssembler())
-container.register("slot_region_deriver", lambda c: SlotRegionDeriver())
-container.register("vram_reader", lambda c: VramReader())
-container.register("vram_cache", lambda c: VramCache(c.resolve("vram_reader")))
-container.register("atlas_renderer", lambda c: AtlasRenderer(c.resolve("color_converter")))
-container.register("atlas_uv_mapper", lambda c: AtlasUvMapper())
-container.register("psx_color_picker", lambda c: PsxColorPicker(c.resolve("color_converter")))
-container.register("paintjob_reader", lambda c: PaintjobReader())
-container.register("paintjob_writer", lambda c: PaintjobWriter())
-container.register("skin_writer", lambda c: SkinWriter())
-container.register("skin_reader", lambda c: SkinReader())
-container.register("wheel_writer", lambda c: WheelWriter())
-container.register("wheel_reader", lambda c: WheelReader())
-container.register("message_dialog", lambda c: MessageDialog())
-container.register("file_picker", lambda c: FilePicker())
-container.register("input_prompt", lambda c: InputPrompt())
-container.register("library_writer", lambda c: LibraryWriter())
-container.register("profile_holder", lambda c: ProfileHolder())
-container.register("character_picker", lambda c: CharacterPicker(c.resolve("profile_holder").get))
-container.register("texture_quantizer", lambda c: TextureQuantizer(c.resolve("color_converter")))
-container.register("single_region_texture_importer", lambda c: SingleRegionTextureImporter(c.resolve("texture_quantizer")))
-container.register("multi_region_texture_importer", lambda c: MultiRegionTextureImporter(
-    c.resolve("texture_quantizer"),
-    c.resolve("four_bpp_codec"),
-))
-container.register("four_bpp_codec", lambda c: FourBppCodec())
-container.register("texture_rotator", lambda c: TextureRotator(c.resolve("four_bpp_codec")))
-container.register("texture_exporter", lambda c: TextureExporter(
-    c.resolve("color_converter"),
-    c.resolve("four_bpp_codec"),
-))
-container.register("preview_image_writer", lambda c: PreviewImageWriter())
-container.register("wheel_geometry", lambda c: WheelGeometry())
-container.register("wheel_sheet", lambda c: WheelSheet(c.resolve("texture_quantizer"), c.resolve("texture_exporter")))
-container.register("palette_from_image_creator", lambda c: PaletteFromImageCreator(c.resolve("texture_quantizer")))
-container.register("palette_from_colors_creator", lambda c: PaletteFromColorsCreator())
-container.register("character_handler", lambda c: CharacterHandler(
-    c.resolve("ctr_model_reader"),
-    c.resolve("vram_cache"),
-    c.resolve("slot_region_deriver"),
-    c.resolve("atlas_renderer"),
-    c.resolve("wheel_geometry"),
-))
-container.register("color_handler", lambda c: ColorHandler(
-    c.resolve("vram_cache"),
-    c.resolve("atlas_renderer"),
-))
-container.register("project_handler", lambda c: ProjectHandler(
-    c.resolve("paintjob_reader"),
-    c.resolve("paintjob_writer"),
-))
-container.register("paintjob_library_controller", lambda c: PaintjobLibraryController(
-    PaintjobLibrarySidebar(),
-    c.resolve("project_handler"),
-    c.resolve("paintjob_writer"),
-    c.resolve("library_writer"),
-    c.resolve("message_dialog"),
-    c.resolve("file_picker"),
-    c.resolve("input_prompt"),
-    c.resolve("slugifier"),
-    c.resolve("character_picker"),
-    c.resolve("color_handler"),
-))
-container.register("skin_library_controller", lambda c: SkinLibraryController(
-    SkinLibrarySidebar(),
-    c.resolve("skin_reader"),
-    c.resolve("skin_writer"),
-    c.resolve("library_writer"),
-    c.resolve("message_dialog"),
-    c.resolve("file_picker"),
-    c.resolve("input_prompt"),
-    c.resolve("slugifier"),
-    c.resolve("character_picker"),
-    c.resolve("color_handler"),
-))
-container.register("wheel_library_controller", lambda c: WheelLibraryController(
-    WheelLibrarySidebar(),
-    c.resolve("wheel_reader"),
-    c.resolve("wheel_writer"),
-    c.resolve("library_writer"),
-    c.resolve("wheel_sheet"),
-    c.resolve("message_dialog"),
-    c.resolve("file_picker"),
-    c.resolve("slugifier"),
-    c.resolve("color_handler"),
-    c.resolve("wheel_geometry"),
-))
-container.register("preview_sidebar", lambda c: PreviewSidebar())
-container.register("slot_editor", lambda c: SlotEditor(c.resolve("color_converter")))
-container.register("orphan_slot_editor", lambda c: SlotEditor(c.resolve("color_converter")))
-container.register("vertex_slot_editor", lambda c: VertexSlotEditor())
-container.register("kart_viewer", lambda c: KartViewer(
-    c.resolve("atlas_uv_mapper"),
-    c.resolve("ray_triangle_picker"),
-    c.resolve("blend_mode_grouper"),
-    c.resolve("wheel_geometry"),
-))
-container.register("palette_library_controller", lambda c: PaletteLibraryController(
-    PaletteSidebar(c.resolve("color_converter")),
-    c.resolve("color_converter"),
-    c.resolve("message_dialog"),
-    c.resolve("input_prompt"),
-    c.resolve("file_picker"),
-    c.resolve("palette_from_image_creator"),
-    c.resolve("palette_from_colors_creator"),
-    c.resolve("psx_color_picker"),
-))
+container.register_lazy("config_path_resolver", "paintjob_designer.config.config_path_resolver:ConfigPathResolver")
+container.register("config_path", lambda c: c.resolve("config_path_resolver").default_path())
+container.register_lazy("config_store", "paintjob_designer.config.store:ConfigStore", "config_path")
+container.register_lazy("iso_root_validator", "paintjob_designer.config.iso_root_validator:IsoRootValidator")
+container.register_lazy("slugifier", "paintjob_designer.core:Slugifier")
+container.register_lazy("app_icon", "paintjob_designer.gui.app_icon:AppIcon")
+
+container.register_lazy("color_converter", "paintjob_designer.color.converter:ColorConverter")
+container.register_lazy(
+    "color_transformer", "paintjob_designer.color.transform:ColorTransformer",
+    "color_converter",
+)
+container.register_lazy(
+    "gradient_generator", "paintjob_designer.color.gradient:GradientGenerator",
+    "color_converter",
+)
+
+container.register_lazy("profile_reader", "paintjob_designer.profile.reader:ProfileReader")
+container.register_lazy("skin_slot_deriver", "paintjob_designer.profile.skin_slot_deriver:SkinSlotDeriver")
+container.register_lazy("animation_decoder", "paintjob_designer.ctr.animation:AnimationDecoder")
+container.register_lazy(
+    "ctr_model_reader", "paintjob_designer.ctr.reader:CtrModelReader",
+    "animation_decoder",
+)
+container.register_lazy(
+    "profile_loader", "paintjob_designer.profile.loader:ProfileLoader",
+    "profile_reader",
+    "ctr_model_reader",
+    "skin_slot_deriver",
+)
+container.register_lazy("profile_holder", "paintjob_designer.gui.controller.profile_holder:ProfileHolder")
+container.register("profile_getter", lambda c: c.resolve("profile_holder").get)
+container.register_lazy(
+    "character_picker", "paintjob_designer.gui.controller.character_picker:CharacterPicker",
+    "profile_getter",
+)
+
+container.register_lazy("vertex_assembler", "paintjob_designer.ctr.vertex_assembler:VertexAssembler")
+container.register_lazy("slot_region_deriver", "paintjob_designer.render.slot_region_deriver:SlotRegionDeriver")
+container.register_lazy("vram_reader", "paintjob_designer.vram.reader:VramReader")
+container.register_lazy("vram_cache", "paintjob_designer.vram.cache:VramCache", "vram_reader")
+container.register_lazy(
+    "atlas_renderer", "paintjob_designer.render.atlas_renderer:AtlasRenderer",
+    "color_converter",
+)
+container.register_lazy("atlas_uv_mapper", "paintjob_designer.render.atlas_uv_mapper:AtlasUvMapper")
+container.register_lazy("ray_triangle_picker", "paintjob_designer.render.ray_picker:RayTrianglePicker")
+container.register_lazy("blend_mode_grouper", "paintjob_designer.render.blend_mode_grouper:BlendModeGrouper")
+container.register_lazy("wheel_geometry", "paintjob_designer.render.wheel_geometry:WheelGeometry")
+container.register_lazy("preview_image_writer", "paintjob_designer.render.preview_image_writer:PreviewImageWriter")
+
+container.register_lazy("paintjob_reader", "paintjob_designer.paintjob.reader:PaintjobReader")
+container.register_lazy("paintjob_writer", "paintjob_designer.paintjob.writer:PaintjobWriter")
+container.register_lazy("skin_reader", "paintjob_designer.skin.reader:SkinReader")
+container.register_lazy("skin_writer", "paintjob_designer.skin.writer:SkinWriter")
+container.register_lazy("wheel_reader", "paintjob_designer.wheel.reader:WheelReader")
+container.register_lazy("wheel_writer", "paintjob_designer.wheel.writer:WheelWriter")
+
+container.register_lazy("message_dialog", "paintjob_designer.gui.util.dialogs:MessageDialog")
+container.register_lazy("file_picker", "paintjob_designer.gui.util.dialogs:FilePicker")
+container.register_lazy("input_prompt", "paintjob_designer.gui.util.dialogs:InputPrompt")
+container.register_lazy("library_writer", "paintjob_designer.gui.util.library_writer:LibraryWriter")
+container.register_lazy(
+    "psx_color_picker", "paintjob_designer.gui.widget.color_picker:PsxColorPicker",
+    "color_converter",
+)
+
+container.register_lazy("four_bpp_codec", "paintjob_designer.texture.four_bpp_codec:FourBppCodec")
+container.register_lazy(
+    "texture_quantizer", "paintjob_designer.texture.texture_quantizer:TextureQuantizer",
+    "color_converter",
+)
+container.register_lazy(
+    "single_region_texture_importer",
+    "paintjob_designer.texture.single_region_texture_importer:SingleRegionTextureImporter",
+    "texture_quantizer",
+)
+container.register_lazy(
+    "multi_region_texture_importer",
+    "paintjob_designer.texture.multi_region_texture_importer:MultiRegionTextureImporter",
+    "texture_quantizer",
+    "four_bpp_codec",
+)
+container.register_lazy(
+    "texture_rotator", "paintjob_designer.texture.texture_rotator:TextureRotator",
+    "four_bpp_codec",
+)
+container.register_lazy(
+    "texture_exporter", "paintjob_designer.texture.texture_exporter:TextureExporter",
+    "color_converter",
+    "four_bpp_codec",
+)
+container.register_lazy(
+    "wheel_sheet", "paintjob_designer.texture.wheel_sheet:WheelSheet",
+    "texture_quantizer",
+    "texture_exporter",
+)
+container.register("wheel_sheet_provider", lambda c: c.provider("wheel_sheet"))
+container.register_lazy(
+    "palette_from_image_creator", "paintjob_designer.palette.palette_from_image_creator:PaletteFromImageCreator",
+    "texture_quantizer",
+)
+container.register("palette_from_image_provider", lambda c: c.provider("palette_from_image_creator"))
+container.register_lazy(
+    "palette_from_colors_creator", "paintjob_designer.palette.palette_from_colors_creator:PaletteFromColorsCreator",
+)
+
+container.register_lazy(
+    "character_handler", "paintjob_designer.gui.handler.character_handler:CharacterHandler",
+    "ctr_model_reader",
+    "vram_cache",
+    "slot_region_deriver",
+    "atlas_renderer",
+    "wheel_geometry",
+)
+container.register_lazy(
+    "color_handler", "paintjob_designer.gui.handler.color_handler:ColorHandler",
+    "vram_cache",
+    "atlas_renderer",
+)
+container.register_lazy(
+    "project_handler", "paintjob_designer.gui.handler.project_handler:ProjectHandler",
+    "paintjob_reader",
+    "paintjob_writer",
+)
+
+container.register_lazy(
+    "paintjob_library_sidebar", "paintjob_designer.gui.widget.paintjob_library_sidebar:PaintjobLibrarySidebar",
+)
+container.register_lazy(
+    "skin_library_sidebar", "paintjob_designer.gui.widget.skin_library_sidebar:SkinLibrarySidebar",
+)
+container.register_lazy(
+    "wheel_library_sidebar", "paintjob_designer.gui.widget.wheel_library_sidebar:WheelLibrarySidebar",
+)
+container.register_lazy(
+    "palette_sidebar", "paintjob_designer.gui.widget.palette_sidebar:PaletteSidebar",
+    "color_converter",
+)
+container.register_lazy(
+    "paintjob_library_controller", "paintjob_designer.gui.controller.paintjob_library_controller:PaintjobLibraryController",
+    "paintjob_library_sidebar",
+    "project_handler",
+    "paintjob_writer",
+    "library_writer",
+    "message_dialog",
+    "file_picker",
+    "input_prompt",
+    "slugifier",
+    "character_picker",
+    "color_handler",
+)
+container.register_lazy(
+    "skin_library_controller", "paintjob_designer.gui.controller.skin_library_controller:SkinLibraryController",
+    "skin_library_sidebar",
+    "skin_reader",
+    "skin_writer",
+    "library_writer",
+    "message_dialog",
+    "file_picker",
+    "input_prompt",
+    "slugifier",
+    "character_picker",
+    "color_handler",
+)
+container.register_lazy(
+    "wheel_library_controller", "paintjob_designer.gui.controller.wheel_library_controller:WheelLibraryController",
+    "wheel_library_sidebar",
+    "wheel_reader",
+    "wheel_writer",
+    "library_writer",
+    "wheel_sheet_provider",
+    "message_dialog",
+    "file_picker",
+    "slugifier",
+    "color_handler",
+    "wheel_geometry",
+)
+container.register_lazy(
+    "palette_library_controller", "paintjob_designer.gui.controller.palette_library_controller:PaletteLibraryController",
+    "palette_sidebar",
+    "color_converter",
+    "message_dialog",
+    "input_prompt",
+    "file_picker",
+    "palette_from_image_provider",
+    "palette_from_colors_creator",
+    "psx_color_picker",
+)
+
+container.register_lazy("preview_sidebar", "paintjob_designer.gui.widget.preview_sidebar:PreviewSidebar")
+container.register_lazy(
+    "slot_editor", "paintjob_designer.gui.widget.slot_editor:SlotEditor",
+    "color_converter",
+)
+container.register_lazy(
+    "orphan_slot_editor", "paintjob_designer.gui.widget.slot_editor:SlotEditor",
+    "color_converter",
+)
+container.register_lazy("vertex_slot_editor", "paintjob_designer.gui.widget.vertex_slot_editor:VertexSlotEditor")
+container.register_lazy(
+    "kart_viewer", "paintjob_designer.gui.widget.kart_viewer:KartViewer",
+    "atlas_uv_mapper",
+    "ray_triangle_picker",
+    "blend_mode_grouper",
+    "wheel_geometry",
+)

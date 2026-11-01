@@ -40,6 +40,7 @@ from paintjob_designer.models.profile import (
 )
 from paintjob_designer.models.quantized_texture import QuantizedTexture
 from paintjob_designer.models.rotated_texture import RotatedTexture
+from paintjob_designer.models.size_mismatch_mode import SizeMismatchMode
 from paintjob_designer.models.skin import Skin, SkinLibrary
 from paintjob_designer.models.slot_regions import (
     CharacterSlotRegions,
@@ -61,6 +62,7 @@ __all__ = [
     "MultiRegionTextureRegionImport",
     "QuantizedTexture",
     "RotatedTexture",
+    "SizeMismatchMode",
     "PsxColor",
     "Rgb888",
     "Profile",

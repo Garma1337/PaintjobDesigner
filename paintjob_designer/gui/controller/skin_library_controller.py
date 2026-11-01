@@ -14,6 +14,7 @@ from paintjob_designer.gui.util.dialogs import (
     InputPrompt,
     MessageDialog,
 )
+from paintjob_designer.gui.util.disposed_after import DisposedAfter
 from paintjob_designer.gui.util.library_writer import LibraryWriter
 from paintjob_designer.gui.widget.skin_library_sidebar import SkinLibrarySidebar
 from paintjob_designer.models import (
@@ -242,6 +243,7 @@ class SkinLibraryController(LibraryController[Skin, SkinLibrary]):
         menu.addSeparator()
         menu.addAction("Delete", lambda: self.delete(index))
         menu.exec(global_pos)
+        menu.deleteLater()
 
     def edit_metadata(self, index: int) -> None:
         from paintjob_designer.gui.dialog.edit_metadata_dialog import (
@@ -252,15 +254,15 @@ class SkinLibraryController(LibraryController[Skin, SkinLibrary]):
             return
 
         skin = self._library.skins[index]
-        dialog = EditMetadataDialog(
+        with DisposedAfter(EditMetadataDialog(
             self._parent_widget,
             title="Edit skin metadata",
             name=skin.name or "",
             author=skin.author or "",
             base_character_options=None,  # skins are character-bound; not editable
-        )
+        )) as dialog:
+            edit = dialog.exec_get()
 
-        edit = dialog.exec_get()
         if edit is None:
             return
 

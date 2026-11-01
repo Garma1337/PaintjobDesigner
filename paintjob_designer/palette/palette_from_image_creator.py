@@ -1,5 +1,7 @@
 # coding: utf-8
 
+from pathlib import Path
+
 from PIL import Image
 
 from paintjob_designer.models import Palette
@@ -29,6 +31,10 @@ class PaletteFromImageCreator:
         )
 
         return Palette(name=name.strip(), colors=list(quantized.palette))
+
+    def create_from_file(self, path: Path) -> Palette:
+        with Image.open(path) as image:
+            return self.create(image, path.stem)
 
     def _prepare(self, image: Image.Image) -> Image.Image:
         rgba = image.convert("RGBA")

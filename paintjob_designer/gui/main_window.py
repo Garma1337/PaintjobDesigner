@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QKeySequence, QUndoStack
 from PySide6.QtWidgets import (
@@ -20,37 +19,22 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from paintjob_designer.color.converter import ColorConverter
-from paintjob_designer.color.gradient import GradientGenerator
-from paintjob_designer.color.transform import ColorTransformer
-from paintjob_designer.config.iso_root_validator import IsoRootValidator
-from paintjob_designer.config.store import AppConfig, ConfigStore
-from paintjob_designer.core import Slugifier
-from paintjob_designer.ctr.vertex_assembler import VertexAssembler
+from paintjob_designer.config.store import AppConfig
+from paintjob_designer.core import Container
 from paintjob_designer.gui.command.bulk_transform_command import BulkColorEdit, BulkTransformCommand
 from paintjob_designer.gui.command.reset_slot_command import ResetSlotCommand
 from paintjob_designer.gui.command.set_slot_color_command import SetSlotColorCommand
 from paintjob_designer.gui.controller.animation_controller import AnimationController
-from paintjob_designer.gui.controller.paintjob_library_controller import PaintjobLibraryController
-from paintjob_designer.gui.controller.palette_library_controller import PaletteLibraryController
-from paintjob_designer.gui.controller.profile_holder import ProfileHolder
-from paintjob_designer.gui.controller.skin_library_controller import SkinLibraryController
 from paintjob_designer.gui.controller.transform_panel_coordinator import TransformPanelCoordinator
-from paintjob_designer.gui.controller.wheel_library_controller import WheelLibraryController
 from paintjob_designer.gui.dialog.gradient_fill_dialog import GradientFillDialog
 from paintjob_designer.gui.dialog.multi_region_texture_import_dialog import MultiRegionTextureImportDialog
 from paintjob_designer.gui.dialog.palette_apply_dialog import PaletteApplyDialog
 from paintjob_designer.gui.editor_mode import EditorMode
-from paintjob_designer.gui.handler.character_handler import BroughtUpCharacter, CharacterHandler
-from paintjob_designer.gui.handler.color_handler import ColorHandler
-from paintjob_designer.gui.handler.project_handler import ProjectHandler
-from paintjob_designer.gui.util.dialogs import FilePicker, MessageDialog
+from paintjob_designer.gui.handler.character_handler import BroughtUpCharacter
+from paintjob_designer.gui.util.disposed_after import DisposedAfter
 from paintjob_designer.gui.widget.collapsible_tab_widget import CollapsibleTabWidget
-from paintjob_designer.gui.widget.color_picker import PsxColorPicker
-from paintjob_designer.gui.widget.kart_viewer import KartViewer, NullKartViewer
-from paintjob_designer.gui.widget.preview_sidebar import PreviewSidebar
+from paintjob_designer.gui.widget.kart_viewer import NullKartViewer
 from paintjob_designer.gui.widget.slot_editor import SlotEditor
-from paintjob_designer.gui.widget.vertex_slot_editor import VertexSlotEditor
 from paintjob_designer.models import (
     CharacterProfile,
     KartType,
@@ -59,6 +43,7 @@ from paintjob_designer.models import (
     Palette,
     PaletteLibrary,
     Profile,
+    SizeMismatchMode,
     SkippedCharacter,
     PsxColor,
     Rgb888,
@@ -72,26 +57,13 @@ from paintjob_designer.models import (
     Wheel,
     WheelLibrary,
 )
-from paintjob_designer.profile.loader import ProfileLoader
 from paintjob_designer.render.atlas_renderer import AtlasRenderer
-from paintjob_designer.render.atlas_uv_mapper import AtlasUvMapper
-from paintjob_designer.render.blend_mode_grouper import BlendModeGrouper
-from paintjob_designer.render.preview_image_writer import PreviewImageWriter
-from paintjob_designer.render.ray_picker import RayTrianglePicker
 from paintjob_designer.render.wheel_geometry import (
     SIDE_FRAME,
     TREAD_FRAME,
     WHEEL_CENTERS,
     WHEEL_HALF_SIZE,
-    WheelGeometry,
 )
-from paintjob_designer.texture.multi_region_texture_importer import MultiRegionTextureImporter
-from paintjob_designer.texture.single_region_texture_importer import (
-    SingleRegionTextureImporter,
-    SizeMismatchMode,
-)
-from paintjob_designer.texture.texture_exporter import TextureExporter
-from paintjob_designer.texture.texture_rotator import TextureRotator
 
 _PAINTJOB_EXT = ".json"
 _PAINTJOB_FILTER = f"Paintjob (*{_PAINTJOB_EXT})"
@@ -101,83 +73,44 @@ class MainWindow(QMainWindow):
     """Top-level window. Owns the editor surface and orchestrates the
     library / palette / skin / preview controllers."""
 
-    def __init__(
-        self,
-        config_store: ConfigStore,
-        iso_root_validator: IsoRootValidator,
-        profile_loader: ProfileLoader,
-        character_handler: CharacterHandler,
-        color_handler: ColorHandler,
-        project_handler: ProjectHandler,
-        color_converter: ColorConverter,
-        color_picker: PsxColorPicker,
-        vertex_assembler: VertexAssembler,
-        atlas_uv_mapper: AtlasUvMapper,
-        color_transformer: ColorTransformer,
-        gradient_generator: GradientGenerator,
-        ray_picker: RayTrianglePicker,
-        blend_mode_grouper: BlendModeGrouper,
-        slugifier: Slugifier,
-        single_region_texture_importer: SingleRegionTextureImporter,
-        multi_region_texture_importer: MultiRegionTextureImporter,
-        texture_rotator: TextureRotator,
-        texture_exporter: TextureExporter,
-        preview_image_writer: PreviewImageWriter,
-        wheel_geometry: WheelGeometry,
-        skin_writer,
-        message: MessageDialog,
-        files: FilePicker,
-        profile_holder: ProfileHolder,
-        paintjob_library_controller: PaintjobLibraryController,
-        skin_library_controller: SkinLibraryController,
-        wheel_library_controller: WheelLibraryController,
-        palette_library_controller: PaletteLibraryController,
-        preview_sidebar: PreviewSidebar,
-        slot_editor: SlotEditor,
-        orphan_slot_editor: SlotEditor,
-        vertex_slot_editor: VertexSlotEditor,
-        kart_viewer: KartViewer,
-    ) -> None:
+    def __init__(self, container: Container) -> None:
         super().__init__()
-        self._config_store = config_store
-        self._validator = iso_root_validator
-        self._profile_loader = profile_loader
-        self._character_handler = character_handler
-        self._color_handler = color_handler
-        self._project_handler = project_handler
-        self._color_converter = color_converter
-        self._color_picker = color_picker
-        self._vertex_assembler = vertex_assembler
-        self._atlas_uv_mapper = atlas_uv_mapper
-        self._color_transformer = color_transformer
-        self._gradient_generator = gradient_generator
-        self._ray_picker = ray_picker
-        self._blend_mode_grouper = blend_mode_grouper
-        self._slugifier = slugifier
-        self._single_region_texture_importer = single_region_texture_importer
-        self._multi_region_texture_importer = multi_region_texture_importer
-        self._texture_rotator = texture_rotator
-        self._texture_exporter = texture_exporter
-        self._preview_image_writer = preview_image_writer
-        self._wheel_geometry = wheel_geometry
-        self._skin_writer = skin_writer
-        self._message = message
-        self._files = files
-        self._profile_holder = profile_holder
+        self._config_store = container.resolve("config_store")
+        self._validator = container.resolve("iso_root_validator")
+        self._profile_loader = container.resolve("profile_loader")
+        self._character_handler = container.resolve("character_handler")
+        self._color_handler = container.resolve("color_handler")
+        self._color_converter = container.resolve("color_converter")
+        self._color_picker = container.resolve("psx_color_picker")
+        self._vertex_assembler = container.resolve("vertex_assembler")
+        self._color_transformer = container.resolve("color_transformer")
+        self._wheel_geometry = container.resolve("wheel_geometry")
 
-        self._paintjob_controller = paintjob_library_controller
-        self._skin_controller = skin_library_controller
-        self._wheel_controller = wheel_library_controller
-        self._palette_controller = palette_library_controller
+        # Only needed by occasional actions, and they pull in Pillow.
+        self._preview_image_writer = container.provider("preview_image_writer")
+        self._gradient_generator = container.provider("gradient_generator")
+        self._single_region_texture_importer = container.provider("single_region_texture_importer")
+        self._multi_region_texture_importer = container.provider("multi_region_texture_importer")
+        self._texture_exporter = container.provider("texture_exporter")
+        self._texture_rotator = container.provider("texture_rotator")
 
-        self._preview_sidebar = preview_sidebar
-        self._slot_editor = slot_editor
-        self._orphan_slot_editor = orphan_slot_editor
-        self._vertex_editor = vertex_slot_editor
-        self._kart_viewer = kart_viewer
+        self._message = container.resolve("message_dialog")
+        self._files = container.resolve("file_picker")
+        self._profile_holder = container.resolve("profile_holder")
+
+        self._paintjob_controller = container.resolve("paintjob_library_controller")
+        self._skin_controller = container.resolve("skin_library_controller")
+        self._wheel_controller = container.resolve("wheel_library_controller")
+        self._palette_controller = container.resolve("palette_library_controller")
+
+        self._preview_sidebar = container.resolve("preview_sidebar")
+        self._slot_editor = container.resolve("slot_editor")
+        self._orphan_slot_editor = container.resolve("orphan_slot_editor")
+        self._vertex_editor = container.resolve("vertex_slot_editor")
+        self._kart_viewer = container.resolve("kart_viewer")
         # Both editors fan out the same per-slot updates — `update_color` /
         # `set_slot_colors` are no-ops when a slot isn't owned by that editor.
-        self._slot_editors: tuple[SlotEditor, ...] = (slot_editor, orphan_slot_editor)
+        self._slot_editors = (self._slot_editor, self._orphan_slot_editor)
 
         # Make sidebars discoverable via short aliases — most editor
         # logic still asks for them by name. Controllers own the actual
@@ -935,18 +868,18 @@ class MainWindow(QMainWindow):
         palette = self._palette_library.palettes[palette_index]
         asset = self._active_asset()
 
-        dialog = PaletteApplyDialog(
+        with DisposedAfter(PaletteApplyDialog(
             palette=palette,
             paintjob_name=asset.name,
             slot_name=slot_name,
             color_converter=self._color_converter,
             parent=self,
-        )
+        )) as dialog:
+            if dialog.exec() != PaletteApplyDialog.DialogCode.Accepted:
+                return
 
-        if dialog.exec() != PaletteApplyDialog.DialogCode.Accepted:
-            return
+            ordered = dialog.ordered_colors()
 
-        ordered = dialog.ordered_colors()
         if not ordered:
             return
 
@@ -987,6 +920,7 @@ class MainWindow(QMainWindow):
         menu.addAction(self._reset_camera_action)
         menu.addAction(self._export_preview_action)
         menu.exec(global_pos)
+        menu.deleteLater()
 
     def _on_export_preview_image(self) -> None:
         """Save the 3D viewer's current frame as a PNG / JPEG / WebP image."""
@@ -1009,12 +943,13 @@ class MainWindow(QMainWindow):
         if save_path is None:
             return
 
-        if save_path.suffix.lower() not in PreviewImageWriter.FORMATS:
+        writer = self._preview_image_writer()
+        if save_path.suffix.lower() not in writer.FORMATS:
             save_path = save_path.with_name(f"{save_path.name}.png")
 
         rgba, width, height = capture
         try:
-            self._preview_image_writer.write(
+            writer.write(
                 rgba, width, height, save_path,
                 jpeg_background=self._kart_viewer.background_rgb(),
             )
@@ -1842,6 +1777,7 @@ class MainWindow(QMainWindow):
         )
 
         menu.exec(global_pos)
+        menu.deleteLater()
 
     def _apply_vertex_override(self, index: int, color: Rgb888) -> None:
         if self._current_skin is None or self._current_bundle is None:
@@ -2117,6 +2053,7 @@ class MainWindow(QMainWindow):
                     )
 
         menu.exec(global_pos)
+        menu.deleteLater()
 
     def _add_apply_palette_submenu(self, menu: QMenu, slot_name: str) -> None:
         """Append an "Apply Color Palette" submenu listing every saved palette."""
@@ -2149,19 +2086,19 @@ class MainWindow(QMainWindow):
             self._current_color(slot, i) for i in range(SlotColors.SIZE)
         ]
 
-        dialog = GradientFillDialog(
+        with DisposedAfter(GradientFillDialog(
             slot_name=slot_name,
             current_colors=current_colors,
             color_converter=self._color_converter,
-            gradient_generator=self._gradient_generator,
+            gradient_generator=self._gradient_generator(),
             color_picker=self._color_picker,
             parent=self,
-        )
+        )) as dialog:
+            if dialog.exec() != dialog.DialogCode.Accepted:
+                return
 
-        if dialog.exec() != dialog.DialogCode.Accepted:
-            return
+            replacements = dialog.resulting_replacements()
 
-        replacements = dialog.resulting_replacements()
         if not replacements:
             return
 
@@ -2266,29 +2203,23 @@ class MainWindow(QMainWindow):
     def _import_multi_region_texture(self, slot_name: str, regions) -> None:
         region_specs = [r.pixel_dimensions for r in regions]
 
-        dialog = MultiRegionTextureImportDialog(
+        with DisposedAfter(MultiRegionTextureImportDialog(
             self,
             slot_name=slot_name,
             region_specs=region_specs,
             files=self._files,
             default_dir=self._config.iso_root or None,
-        )
+        )) as dialog:
+            if dialog.exec() != MultiRegionTextureImportDialog.DialogCode.Accepted:
+                return
 
-        if dialog.exec() != MultiRegionTextureImportDialog.DialogCode.Accepted:
-            return
-
-        paths = dialog.chosen_paths()
-        try:
-            images = [Image.open(p).copy() for p in paths]
-        except OSError as exc:
-            QMessageBox.critical(self, "Import failed", str(exc))
-            return
+            paths = dialog.chosen_paths()
 
         try:
-            result = self._multi_region_texture_importer.import_for_regions(
-                images, region_specs,
+            result = self._multi_region_texture_importer().import_from_paths(
+                paths, region_specs,
             )
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             QMessageBox.critical(self, "Import failed", str(exc))
             return
 
@@ -2387,7 +2318,7 @@ class MainWindow(QMainWindow):
                 )
                 width, height = region.pixel_dimensions
 
-            image = self._texture_exporter.to_image(
+            image = self._texture_exporter().to_image(
                 pixel_bytes, width, height, clut,
             )
 
@@ -2413,34 +2344,34 @@ class MainWindow(QMainWindow):
     def _import_png_with_prompt(self, path: Path, width: int, height: int):
         """Try REJECT mode first; on size mismatch, ask the artist whether to scale/crop."""
         try:
-            return self._single_region_texture_importer.import_from_path(path, width, height)
+            return self._single_region_texture_importer().import_from_path(path, width, height)
         except ValueError as exc:
             # Size mismatch — offer Scale / Crop / Cancel.
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Size mismatch")
-            msg.setText(str(exc))
-            msg.setInformativeText(
-                "Choose how to fit the source image into the slot:",
-            )
-            scale = msg.addButton("Scale", QMessageBox.ButtonRole.AcceptRole)
-            crop = msg.addButton("Center crop", QMessageBox.ButtonRole.AcceptRole)
-            msg.addButton(QMessageBox.StandardButton.Cancel)
-            msg.exec()
+            with DisposedAfter(QMessageBox(self)) as msg:
+                msg.setWindowTitle("Size mismatch")
+                msg.setText(str(exc))
+                msg.setInformativeText(
+                    "Choose how to fit the source image into the slot:",
+                )
+                scale = msg.addButton("Scale", QMessageBox.ButtonRole.AcceptRole)
+                crop = msg.addButton("Center crop", QMessageBox.ButtonRole.AcceptRole)
+                msg.addButton(QMessageBox.StandardButton.Cancel)
+                msg.exec()
 
-            chosen = msg.clickedButton()
+                chosen = msg.clickedButton()
 
-            if chosen is scale:
-                mode = SizeMismatchMode.SCALE
-            elif chosen is crop:
-                mode = SizeMismatchMode.CENTER_CROP
-            else:
-                return None
+                if chosen is scale:
+                    mode = SizeMismatchMode.SCALE
+                elif chosen is crop:
+                    mode = SizeMismatchMode.CENTER_CROP
+                else:
+                    return None
 
             try:
-                return self._single_region_texture_importer.import_from_path(
+                return self._single_region_texture_importer().import_from_path(
                     path, width, height, mode=mode,
                 )
-            except ValueError as exc2:
+            except (OSError, ValueError) as exc2:
                 QMessageBox.critical(self, "Import failed", str(exc2))
                 return None
         except OSError as exc:
@@ -2508,7 +2439,7 @@ class MainWindow(QMainWindow):
 
         region = slot.pixels[0]
         try:
-            rotated = self._texture_rotator.rotate(
+            rotated = self._texture_rotator().rotate(
                 region.pixels, region.width, region.height, degrees,
             )
         except ValueError as exc:

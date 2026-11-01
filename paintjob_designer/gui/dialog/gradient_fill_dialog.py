@@ -65,11 +65,11 @@ class GradientFillDialog(QDialog):
         )
 
         self._start_button = PsxColorButton(self._converter, self._picker, default_start)
-        self._start_button.color_picked.connect(lambda _: self._refresh_preview())
+        self._start_button.color_picked.connect(self._refresh_preview)
         form.addRow("Start color:", self._start_button)
 
         self._end_button = PsxColorButton(self._converter, self._picker, default_end)
-        self._end_button.color_picked.connect(lambda _: self._refresh_preview())
+        self._end_button.color_picked.connect(self._refresh_preview)
         form.addRow("End color:", self._end_button)
 
         self._from_spin = QSpinBox()

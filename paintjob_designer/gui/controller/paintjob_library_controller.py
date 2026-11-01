@@ -15,6 +15,7 @@ from paintjob_designer.gui.util.dialogs import (
     InputPrompt,
     MessageDialog,
 )
+from paintjob_designer.gui.util.disposed_after import DisposedAfter
 from paintjob_designer.gui.util.library_writer import LibraryWriter
 from paintjob_designer.gui.widget.paintjob_library_sidebar import PaintjobLibrarySidebar
 from paintjob_designer.models import (
@@ -282,6 +283,7 @@ class PaintjobLibraryController(LibraryController[Paintjob, PaintjobLibrary]):
         menu.addSeparator()
         menu.addAction("Delete", lambda: self.delete(index))
         menu.exec(global_pos)
+        menu.deleteLater()
 
     def edit_metadata(self, index: int) -> None:
         from paintjob_designer.gui.dialog.edit_metadata_dialog import (
@@ -297,16 +299,16 @@ class PaintjobLibraryController(LibraryController[Paintjob, PaintjobLibrary]):
             [c.id for c in profile.characters] if profile is not None else []
         )
 
-        dialog = EditMetadataDialog(
+        with DisposedAfter(EditMetadataDialog(
             self._parent_widget,
             title="Edit paintjob metadata",
             name=paintjob.name,
             author=paintjob.author,
             base_character_options=base_options,
             base_character_current=paintjob.base_character_id,
-        )
+        )) as dialog:
+            edit = dialog.exec_get()
 
-        edit = dialog.exec_get()
         if edit is None:
             return
 

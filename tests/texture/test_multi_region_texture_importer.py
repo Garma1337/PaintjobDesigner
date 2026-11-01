@@ -111,3 +111,19 @@ class TestSliceRegion:
                 [0] * 12, stitched_width=4, y_offset=0,
                 region_width=3, region_height=1,
             )
+
+
+class TestImportFromPaths:
+
+    def test_reads_each_file_into_its_region(self, tmp_path):
+        paths = [tmp_path / "a.png", tmp_path / "b.png"]
+        for path in paths:
+            Image.new("RGBA", (4, 4), (255, 0, 0, 255)).save(path)
+
+        result = _importer().import_from_paths(paths, [(4, 4), (4, 4)])
+
+        assert len(result.regions) == 2
+
+    def test_missing_file_raises_os_error(self, tmp_path):
+        with pytest.raises(OSError):
+            _importer().import_from_paths([tmp_path / "missing.png"], [(4, 4)])

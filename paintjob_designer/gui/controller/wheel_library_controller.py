@@ -1,8 +1,8 @@
 # coding: utf-8
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
-from PIL import Image
 from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QMenu, QWidget
 
@@ -10,6 +10,7 @@ from paintjob_designer.core import Slugifier
 from paintjob_designer.gui.controller.library_controller import LibraryController
 from paintjob_designer.gui.handler.color_handler import ColorHandler
 from paintjob_designer.gui.util.dialogs import FilePicker, MessageDialog
+from paintjob_designer.gui.util.disposed_after import DisposedAfter
 from paintjob_designer.gui.util.library_writer import LibraryWriter
 from paintjob_designer.gui.widget.wheel_library_sidebar import WheelLibrarySidebar
 from paintjob_designer.models import (
@@ -21,9 +22,11 @@ from paintjob_designer.models import (
     WheelLibrary,
 )
 from paintjob_designer.render.wheel_geometry import WheelGeometry
-from paintjob_designer.texture.wheel_sheet import WheelSheet
 from paintjob_designer.wheel.reader import WheelReader
 from paintjob_designer.wheel.writer import WheelWriter
+
+if TYPE_CHECKING:
+    from paintjob_designer.texture.wheel_sheet import WheelSheet
 
 _WHEEL_EXT = ".json"
 _WHEEL_FILTER = f"Wheel (*{_WHEEL_EXT})"
@@ -39,7 +42,7 @@ class WheelLibraryController(LibraryController[Wheel, WheelLibrary]):
         wheel_reader: WheelReader,
         wheel_writer: WheelWriter,
         library_writer: LibraryWriter,
-        wheel_sheet: WheelSheet,
+        wheel_sheet_provider: Callable[[], "WheelSheet"],
         message: MessageDialog,
         files: FilePicker,
         slugifier: Slugifier,
@@ -52,7 +55,7 @@ class WheelLibraryController(LibraryController[Wheel, WheelLibrary]):
         self._wheel_reader = wheel_reader
         self._wheel_writer = wheel_writer
         self._library_writer = library_writer
-        self._wheel_sheet = wheel_sheet
+        self._wheel_sheet = wheel_sheet_provider
         self._files = files
         self._slugifier = slugifier
         self._color_handler = color_handler
@@ -201,8 +204,7 @@ class WheelLibraryController(LibraryController[Wheel, WheelLibrary]):
             return
 
         try:
-            with Image.open(path) as image:
-                frames = self._wheel_sheet.from_image(image)
+            frames = self._wheel_sheet().from_file(path)
         except (OSError, ValueError) as exc:
             self._message.error(self._parent_widget, "Import failed", str(exc))
             return
@@ -248,7 +250,7 @@ class WheelLibraryController(LibraryController[Wheel, WheelLibrary]):
             path = path.with_name(f"{path.name}.png")
 
         try:
-            self._wheel_sheet.to_image(self.frames_of(wheel)).save(path)
+            self._wheel_sheet().to_image(self.frames_of(wheel)).save(path)
         except (OSError, ValueError) as exc:
             self._message.error(self._parent_widget, "Export failed", str(exc))
 
@@ -288,6 +290,7 @@ class WheelLibraryController(LibraryController[Wheel, WheelLibrary]):
         menu.addSeparator()
         menu.addAction("Delete", lambda: self.delete(index))
         menu.exec(global_pos)
+        menu.deleteLater()
 
     def edit_metadata(self, index: int) -> None:
         from paintjob_designer.gui.dialog.edit_metadata_dialog import EditMetadataDialog
@@ -296,15 +299,15 @@ class WheelLibraryController(LibraryController[Wheel, WheelLibrary]):
             return
 
         wheel = self._library.wheels[index]
-        dialog = EditMetadataDialog(
+        with DisposedAfter(EditMetadataDialog(
             self._parent_widget,
             title="Edit wheel metadata",
             name=wheel.name or "",
             author=wheel.author or "",
             base_character_options=None,
-        )
+        )) as dialog:
+            edit = dialog.exec_get()
 
-        edit = dialog.exec_get()
         if edit is None:
             return
 

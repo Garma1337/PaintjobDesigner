@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
 
 from paintjob_designer.gui.util.dialogs import FilePicker
 
+_REGION_INDEX = "regionIndex"
+
 
 class MultiRegionTextureImportDialog(QDialog):
     """Per-region PNG picker for multi-region slot texture imports.
@@ -66,7 +68,8 @@ class MultiRegionTextureImportDialog(QDialog):
             self._labels.append(chosen_label)
 
             pick_button = QPushButton("Pick PNG...")
-            pick_button.clicked.connect(self._make_picker(i))
+            pick_button.setProperty(_REGION_INDEX, i)
+            pick_button.clicked.connect(self._on_pick)
 
             row_layout.addWidget(chosen_label)
             row_layout.addWidget(pick_button)
@@ -88,24 +91,22 @@ class MultiRegionTextureImportDialog(QDialog):
         """Return the user's per-region picks. Caller checks `exec()` first."""
         return [p for p in self._paths if p is not None]
 
-    def _make_picker(self, region_index: int):
-        def handler():
-            path = self._files.pick_open_path(
-                self,
-                f"Pick PNG for region {region_index + 1}",
-                self._default_dir,
-                "PNG images (*.png);;All files (*)",
-            )
+    def _on_pick(self) -> None:
+        region_index = self.sender().property(_REGION_INDEX)
+        path = self._files.pick_open_path(
+            self,
+            f"Pick PNG for region {region_index + 1}",
+            self._default_dir,
+            "PNG images (*.png);;All files (*)",
+        )
 
-            if path is None:
-                return
+        if path is None:
+            return
 
-            self._paths[region_index] = Path(path)
-            self._labels[region_index].setText(Path(path).name)
-            self._labels[region_index].setStyleSheet("")
-            self._refresh_ok_enabled()
-
-        return handler
+        self._paths[region_index] = Path(path)
+        self._labels[region_index].setText(Path(path).name)
+        self._labels[region_index].setStyleSheet("")
+        self._refresh_ok_enabled()
 
     def _refresh_ok_enabled(self) -> None:
         all_picked = all(p is not None for p in self._paths)

@@ -1,5 +1,7 @@
 # coding: utf-8
 
+from pathlib import Path
+
 from PIL import Image
 
 from paintjob_designer.models import (
@@ -31,6 +33,18 @@ class MultiRegionTextureImporter:
     ) -> None:
         self._quantizer = quantizer
         self._codec = codec
+
+    def import_from_paths(
+        self,
+        paths: list[Path],
+        region_specs: list[tuple[int, int]],
+    ) -> MultiRegionTextureImport:
+        images: list[Image.Image] = []
+        for path in paths:
+            with Image.open(path) as image:
+                images.append(image.copy())
+
+        return self.import_for_regions(images, region_specs)
 
     def import_for_regions(
         self,

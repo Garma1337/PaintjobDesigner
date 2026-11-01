@@ -250,6 +250,7 @@ class PaletteSidebar(QWidget):
         menu.addSeparator()
         menu.addAction("Delete", lambda: self.delete_palette_requested.emit(row))
         menu.exec(global_pos)
+        menu.deleteLater()
 
     def _on_edit_clicked(self) -> None:
         row = self._list.currentRow()

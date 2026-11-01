@@ -4,6 +4,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QColorDialog, QWidget
 
 from paintjob_designer.color.converter import ColorConverter
+from paintjob_designer.gui.util.disposed_after import DisposedAfter
 from paintjob_designer.models import PsxColor, Rgb888
 
 
@@ -16,16 +17,17 @@ class PsxColorPicker:
     def pick(
         self, initial: PsxColor, parent: QWidget | None = None, title: str = "Pick CLUT color",
     ) -> PsxColor | None:
-        dialog = QColorDialog(self._start_color(initial), parent)
-        dialog.setWindowTitle(title)
-        dialog.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
-        dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
-        dialog.resize(1100, 640)
+        with DisposedAfter(QColorDialog(self._start_color(initial), parent)) as dialog:
+            dialog.setWindowTitle(title)
+            dialog.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
+            dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+            dialog.resize(1100, 640)
 
-        if dialog.exec() != QColorDialog.DialogCode.Accepted:
-            return None
+            if dialog.exec() != QColorDialog.DialogCode.Accepted:
+                return None
 
-        chosen = dialog.currentColor()
+            chosen = dialog.currentColor()
+
         if not chosen.isValid():
             return None
 

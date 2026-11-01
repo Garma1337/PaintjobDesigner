@@ -21,6 +21,7 @@ from paintjob_designer.gui.widget.psx_color_button import PsxColorButton
 from paintjob_designer.models import Palette, PsxColor
 
 _MAX_COLORS = CLUT_PALETTE_SIZE
+_COLOR_INDEX = "colorIndex"
 
 
 class PaletteEditDialog(QDialog):
@@ -132,35 +133,41 @@ class PaletteEditDialog(QDialog):
         layout.addWidget(index_label)
 
         button = PsxColorButton(self._converter, self._picker, color, parent=row)
-        button.color_picked.connect(lambda c, i=index: self._on_color_picked(i, c))
+        button.setProperty(_COLOR_INDEX, index)
+        button.color_picked.connect(self._on_color_picked)
         layout.addWidget(button)
 
         up = QPushButton("▲")
         up.setFixedWidth(28)
         up.setEnabled(index > 0)
-        up.clicked.connect(lambda _=False, i=index: self._on_move_up(i))
+        up.setProperty(_COLOR_INDEX, index)
+        up.clicked.connect(self._on_move_up)
         layout.addWidget(up)
 
         down = QPushButton("▼")
         down.setFixedWidth(28)
         down.setEnabled(index < len(self._colors) - 1)
-        down.clicked.connect(lambda _=False, i=index: self._on_move_down(i))
+        down.setProperty(_COLOR_INDEX, index)
+        down.clicked.connect(self._on_move_down)
         layout.addWidget(down)
 
         remove = QPushButton("✕")
         remove.setFixedWidth(28)
         remove.setToolTip("Remove this color")
-        remove.clicked.connect(lambda _=False, i=index: self._on_remove(i))
+        remove.setProperty(_COLOR_INDEX, index)
+        remove.clicked.connect(self._on_remove)
         layout.addWidget(remove)
 
         layout.addStretch()
         return row
 
-    def _on_color_picked(self, index: int, color: PsxColor) -> None:
+    def _on_color_picked(self, color: PsxColor) -> None:
+        index = self.sender().property(_COLOR_INDEX)
         if 0 <= index < len(self._colors):
             self._colors[index] = color
 
-    def _on_move_up(self, index: int) -> None:
+    def _on_move_up(self) -> None:
+        index = self.sender().property(_COLOR_INDEX)
         if index <= 0 or index >= len(self._colors):
             return
 
@@ -169,7 +176,8 @@ class PaletteEditDialog(QDialog):
         )
         self._rebuild_color_rows()
 
-    def _on_move_down(self, index: int) -> None:
+    def _on_move_down(self) -> None:
+        index = self.sender().property(_COLOR_INDEX)
         if index < 0 or index >= len(self._colors) - 1:
             return
 
@@ -178,7 +186,8 @@ class PaletteEditDialog(QDialog):
         )
         self._rebuild_color_rows()
 
-    def _on_remove(self, index: int) -> None:
+    def _on_remove(self) -> None:
+        index = self.sender().property(_COLOR_INDEX)
         if 0 <= index < len(self._colors):
             self._colors.pop(index)
             self._rebuild_color_rows()

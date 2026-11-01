@@ -1,5 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+
+from PyInstaller.utils.hooks import collect_submodules
+
+sys.path.insert(0, SPECPATH)
+
 KEEP_QT_MODULES = {
     "Core",
     "Gui",
@@ -42,7 +48,29 @@ MISC_EXCLUDES = [
     "pip",
     "doctest",
     "pdb",
+    "ssl",
+    "_ssl",
+    "_hashlib",
+    "PIL._avif",
+    "PIL.AvifImagePlugin",
+    "PIL._imagingcms",
+    "PIL.ImageCms",
+    "PIL._imagingtk",
+    "PIL.ImageTk",
+    "PIL._imagingmath",
+    "PIL.ImageMath",
 ]
+
+_UNUSED_PATHS = (
+    "pyside6/translations/",
+    "pyside6/plugins/iconengines/",
+    "opengl/dlls/",
+)
+_KEPT_PLUGINS = {
+    "pyside6/plugins/imageformats/": ("qico",),
+    "pyside6/plugins/platforms/": ("qwindows", "libqxcb", "libqwayland"),
+}
+_UNUSED_FILES = {"msvcr100.dll"}
 
 
 def _path_modules(dest: str) -> set[str]:
@@ -81,6 +109,19 @@ def _is_excluded(dest: str) -> bool:
     return all(m not in keep_lower for m in modules)
 
 
+def _is_unused(dest: str) -> bool:
+    path = dest.replace("\\", "/").lower()
+
+    if path in _UNUSED_FILES or path.startswith(_UNUSED_PATHS):
+        return True
+
+    for folder, kept in _KEPT_PLUGINS.items():
+        if path.startswith(folder):
+            return not path[len(folder):].startswith(kept)
+
+    return False
+
+
 a = Analysis(
     ["main.py"],
     pathex=[],
@@ -90,7 +131,7 @@ a = Analysis(
         ("paintjob_designer/gui/widget/shaders", "paintjob_designer/gui/widget/shaders"),
         ("app.ico", "."),
     ],
-    hiddenimports=[],
+    hiddenimports=collect_submodules("paintjob_designer"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -102,14 +143,14 @@ a = Analysis(
 _before_binaries = len(a.binaries)
 _before_datas = len(a.datas)
 
-a.binaries = [b for b in a.binaries if not _is_excluded(b[0])]
-a.datas = [d for d in a.datas if not _is_excluded(d[0])]
+a.binaries = [b for b in a.binaries if not _is_excluded(b[0]) and not _is_unused(b[0])]
+a.datas = [d for d in a.datas if not _is_excluded(d[0]) and not _is_unused(d[0])]
 
 print(
     f"[paintjob_designer.spec] Dropped "
     f"{_before_binaries - len(a.binaries)} binaries and "
     f"{_before_datas - len(a.datas)} data files "
-    f"for excluded Qt modules."
+    f"for excluded Qt modules and unused files."
 )
 
 
