@@ -47,9 +47,9 @@ Things that aren't obvious from the UI. The basics — click a swatch, pick a co
   - [Rotate Texture](#rotate-texture)
 - [Undo / Redo](#undo--redo)
 - [Library I/O](#library-io)
-  - [Paintjob Library](#paintjob-library-io)
-  - [Skin Library](#skin-library-io)
-  - [Wheel Library](#wheel-library-io)
+  - [Paintjob Library](#paintjob-library-1)
+  - [Skin Library](#skin-library-1)
+  - [Wheel Library](#wheel-library-1)
   - [Drag-and-Drop](#drag-and-drop)
 
 ## First Launch and ISO Layout
@@ -272,7 +272,8 @@ Character models mix several kinds of surfaces, and the editor mode decides whic
 - **Kart-side CLUT surfaces** — sampled from the kart slots a paintjob edits. Most of the kart body is built this way. Editable in paintjob mode.
 - **Skin-side CLUT surfaces** — sampled from skin slots (face, accessories). Editable in skin mode.
 - **Gouraud-shaded surfaces** — driver body. Editable via the Vertex slots tab in skin mode.
-- **Fixed surfaces** — hard-coded colors baked into the model that no paintjob/skin touches (wheel rims). Reported as "not editable" by the eyedropper.
+- **Fixed surfaces** — hard-coded colors baked into the model that no paintjob/skin touches. Reported as "not editable" by the eyedropper.
+- **Wheels** — drawn separately from the character model and edited in the Wheels tab. The eyedropper doesn't pick them; right-clicking one opens the viewer's context menu.
 
 The editor renders all of them the way the real game does, so the preview matches what the PS1 would draw. CTR ships many textures as greyscale templates that tint at runtime; you'll see them in their final tinted colors in the preview.
 
@@ -300,7 +301,7 @@ A **Loop** checkbox controls end-of-clip behavior. Unchecked (the default), play
 
 Every color you pick is **snapped to the PSX color grid** before being written back: the PS1 supports only a limited palette (32 levels per channel), so the editor rounds your choice to the nearest representable color. What you see in the swatch after picking is exactly what the game will display. The snap is lossy — `#FF7F3A` going in might come back as `#FF7F38`.
 
-The picker also exposes the **alpha** slider for the PSX semi-transparency bit. Alpha < 128 collapses the color to the transparent sentinel.
+The picker also has an **alpha** slider, which only marks a color as transparent: alpha below 128 collapses it to the transparent sentinel. It can't turn on the PSX semi-transparency bit; a color simply keeps the bit it already has.
 
 ## Color Palettes
 
@@ -310,7 +311,7 @@ Color Palettes live nested inside the Paintjobs tab as a second list below the p
 - **From Slot** — captures the focused slot's 16 colors into a new palette. Works from either the CLUT slots or the Orphan Slots tab — whichever has a focused row.
 - **From Image...** — pick a PNG and the image is quantized to 15 colors + transparent (the same quantizer the texture importer uses), seeded into a new palette named after the file.
 - **Edit** / **Rename** / **Delete** — standard list operations.
-- **Apply** — right-click any slot row in paintjob mode → **Apply Color Palette** → pick a saved palette. The palette's colors become that slot's colors as a single undo entry.
+- **Apply** — right-click any slot row → **Apply Color Palette** → pick a saved palette. The palette's colors become that slot's colors as a single undo entry.
 
 The palette sidebar also has a **Filter...** box at the top.
 
@@ -350,8 +351,9 @@ The transparency sentinel (any all-zero CLUT entry) is never touched by any mode
 - **Current slot** — transforms the 16 colors of the focused slot.
 - **All kart slots** — every kart-side slot of the active paintjob. Only enabled in paintjob mode.
 - **All skin slots** — every skin-side slot of the active skin. Only enabled in skin mode.
+- **All wheel frames** — all 17 frames of the active wheel. Only enabled in wheel mode.
 
-The off-mode scope is always disabled — paintjobs can't write to skin slots and vice versa.
+The off-mode scopes are always disabled — paintjobs can't write to skin slots or wheel frames, and so on.
 
 How you opened the panel picks the starting scope:
 
@@ -369,7 +371,7 @@ Even a whole-kart hue shift across 100+ colors lands in a single frame, so the p
 
 ## Gradient Fill
 
-Right-click a slot row → **Gradient fill...** fills a contiguous range of the slot's colors with a linear interpolation between two endpoint colors. Available in both paintjob and skin mode.
+Right-click a slot row → **Gradient fill...** fills a contiguous range of the slot's colors with a linear interpolation between two endpoint colors. Available for paintjobs, skins and wheels.
 
 - **Color space** — *RGB* interpolates per channel (predictable but can wash out at midpoints; red → blue passes through grey). *HSV* walks the shorter arc around the color wheel, so red → blue goes through magenta instead.
 - **From / To index** — which colors to fill. Defaults skip the transparency slot.
@@ -378,7 +380,7 @@ Right-click a slot row → **Gradient fill...** fills a contiguous range of the 
 
 ## Texture Import
 
-Right-click a slot row → **Import texture...** → pick a PNG → the slot's colors and pixels are baked from the image (15 colors + transparent, packed 4bpp). Available for both paintjobs and skins on slots whose VRAM rect dimensions are dim-invariant across characters.
+Right-click a slot row → **Import texture...** → pick a PNG → the slot's colors and pixels are baked from the image (15 colors + transparent, packed 4bpp). Available for paintjobs and skins on slots whose VRAM rect dimensions are dim-invariant across characters, and for every wheel frame.
 
 - The dialog refuses slots flagged as `non_portable` in the profile (kart `floor` is the canonical case — different dimensions per character, so an imported image couldn't reuse cleanly across the roster).
 - **Multi-region slots** (slots whose CLUT is sampled by multiple disjoint VRAM rectangles) open a **multi-region import dialog** with one row per region. Pick a PNG per region; a single 16-color palette is built across all the regions together so they share the same CLUT.

@@ -26,7 +26,7 @@ Only the portable Windows build uses PyInstaller; the two source packages are pr
 pyinstaller PaintjobDesigner.spec
 ```
 
-The spec file lives at the repo root; it handles icon, data-file bundling, and the PySide6 submodule exclusions that keep the bundle small. Output lands in `dist/PaintjobDesigner/`.
+The spec file lives at the repo root; it handles icon, data-file bundling, collecting every `paintjob_designer` module (services are imported lazily by name, so PyInstaller can't find them on its own), and leaving out the Qt modules, Qt plugins and Python extensions the app doesn't use. Output lands in `dist/PaintjobDesigner/`.
 
 # Running Tests
 
@@ -34,7 +34,7 @@ The spec file lives at the repo root; it handles icon, data-file bundling, and t
 pytest
 ```
 
-All headless — no GL context or ISO needed. Controller tests pull in a session-scoped `qapp` fixture from `tests/conftest.py` so the Qt-widget side compiles, but no event loop runs.
+All headless — no GL context or ISO needed. Controller tests pull in a session-scoped `qapp` fixture from `tests/conftest.py` so the Qt widgets can be built. A few dialog tests run a short modal `exec()` that closes itself.
 
 # Regenerating Schemas
 
@@ -44,4 +44,4 @@ When you change a model in `paintjob_designer/models/`, regenerate the committed
 python tools/dump_schema.py
 ```
 
-This writes `schema/paintjobs_library_schema.json` and `schema/skins_library_schema.json`. The matching tests in `tests/paintjob/test_schema.py` and `tests/skin/test_schema.py` will fail in CI if you forget.
+This writes `schema/paintjobs_library_schema.json`, `schema/skins_library_schema.json` and `schema/wheels_library_schema.json`. The matching tests in `tests/paintjob/test_schema.py`, `tests/skin/test_schema.py` and `tests/wheel/test_schema.py` will fail in CI if you forget.

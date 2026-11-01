@@ -68,7 +68,7 @@ If a saved skin's `character_id` doesn't exist in the profile, the designer keep
 
 ### Slot payload
 
-Identical shape to the paintjob format — see [paintjob_library_format.md#slot-payload](paintjob_library_format.mdlot-payload). The only difference is that skin slots key into the character's *skin*-side CLUTs (face, accessories, character-specific detail textures) rather than the kart-side ones.
+Identical shape to the paintjob format — see [paintjob_library_format.md#slot-payload](paintjob_library_format.md#slot-payload). The only difference is that skin slots key into the character's *skin*-side CLUTs (face, accessories, character-specific detail textures) rather than the kart-side ones.
 
 ### Vertex overrides
 
@@ -87,7 +87,7 @@ Standard CTR character bodies are colored per-vertex (Gouraud) rather than via V
 
 ## Color format
 
-Skin slot colors use the same PSX 16-bit `#xxxx` format as paintjob slots — see [paintjob_library_format.md#color-format](paintjob_library_format.mdolor-format).
+Skin slot colors use the same PSX 16-bit `#xxxx` format as paintjob slots — see [paintjob_library_format.md#color-format](paintjob_library_format.md#color-format).
 
 Vertex override colors use plain 8-bit RGB (`r`, `g`, `b` ∈ 0–255) because gouraud colors aren't routed through a CLUT.
 
