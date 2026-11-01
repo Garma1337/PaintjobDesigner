@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from paintjob_designer.color.converter import ColorConverter
 from paintjob_designer.color.gradient import GradientGenerator, GradientSpace
 from paintjob_designer.constants import PSX_TRANSPARENT_VALUE
+from paintjob_designer.gui.widget.color_picker import PsxColorPicker
 from paintjob_designer.gui.widget.psx_color_button import PsxColorButton
 from paintjob_designer.models import PsxColor, SlotColors
 
@@ -30,6 +31,7 @@ class GradientFillDialog(QDialog):
         current_colors: list[PsxColor],
         color_converter: ColorConverter,
         gradient_generator: GradientGenerator,
+        color_picker: PsxColorPicker,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -40,6 +42,7 @@ class GradientFillDialog(QDialog):
         self._current_colors = list(current_colors)
         self._converter = color_converter
         self._generator = gradient_generator
+        self._picker = color_picker
 
         self._result: list[tuple[int, PsxColor]] = []
 
@@ -61,11 +64,11 @@ class GradientFillDialog(QDialog):
             else PsxColor(value=PSX_TRANSPARENT_VALUE)
         )
 
-        self._start_button = PsxColorButton(self._converter, default_start)
+        self._start_button = PsxColorButton(self._converter, self._picker, default_start)
         self._start_button.color_picked.connect(lambda _: self._refresh_preview())
         form.addRow("Start color:", self._start_button)
 
-        self._end_button = PsxColorButton(self._converter, default_end)
+        self._end_button = PsxColorButton(self._converter, self._picker, default_end)
         self._end_button.color_picked.connect(lambda _: self._refresh_preview())
         form.addRow("End color:", self._end_button)
 

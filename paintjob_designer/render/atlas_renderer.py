@@ -44,10 +44,6 @@ class AtlasRenderer:
         rgba = bytearray(self.ATLAS_WIDTH * self.ATLAS_HEIGHT * self.BYTES_PER_PIXEL)
         self._decode_16bpp_baseline(vram, rgba)
 
-        # Profile slots and mesh-discovered unmatched palettes share the same
-        # rendering path — both resolve through the asset-override lookup so a
-        # paintjob/skin keyed under the unmatched's synthesized slot name takes
-        # effect just like a profile slot.
         for slot_name, slot in regions.all_slots():
             clut = self._resolve_clut(vram, slot.clut, paintjob, slot_name)
             pixels_by_pos = self._paintjob_pixels_by_pos(paintjob, slot_name)

@@ -24,7 +24,6 @@ class TestAppConfig:
         cfg = AppConfig()
 
         assert cfg.iso_root == ""
-        assert cfg.last_profile_id == "vanilla-ntsc-u"
         assert cfg.library is None
         assert cfg.palettes == []
 
@@ -39,13 +38,11 @@ class TestLoad:
     def test_loads_previously_saved_values(self, config_store, config_path):
         config_path.write_text(json.dumps({
             "iso_root": "/iso/root",
-            "last_profile_id": "saphi",
         }))
 
         cfg = config_store.load()
 
         assert cfg.iso_root == "/iso/root"
-        assert cfg.last_profile_id == "saphi"
 
     def test_non_object_json_falls_back_to_default(self, config_store, config_path):
         config_path.write_text(json.dumps([1, 2, 3]))
@@ -60,7 +57,6 @@ class TestLoad:
         cfg = config_store.load()
 
         assert cfg.iso_root == "/iso"
-        assert cfg.last_profile_id == "vanilla-ntsc-u"
         assert cfg.library is None
         assert cfg.palettes == []
 
@@ -68,7 +64,6 @@ class TestLoad:
         library_blob = {"paintjobs": []}
         config_path.write_text(json.dumps({
             "iso_root": "/iso",
-            "last_profile_id": "saphi",
             "library": library_blob,
         }))
 
@@ -145,7 +140,6 @@ class TestSave:
     def test_round_trip_through_save_and_load(self, config_store):
         original = AppConfig(
             iso_root="/iso/root",
-            last_profile_id="saphi",
         )
 
         config_store.save(original)

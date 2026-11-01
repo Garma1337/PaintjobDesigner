@@ -2,8 +2,9 @@
 
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QKeySequence, QUndoStack
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -35,15 +36,16 @@ from paintjob_designer.gui.controller.palette_library_controller import PaletteL
 from paintjob_designer.gui.controller.profile_holder import ProfileHolder
 from paintjob_designer.gui.controller.skin_library_controller import SkinLibraryController
 from paintjob_designer.gui.controller.transform_panel_coordinator import TransformPanelCoordinator
+from paintjob_designer.gui.controller.wheel_library_controller import WheelLibraryController
 from paintjob_designer.gui.dialog.gradient_fill_dialog import GradientFillDialog
 from paintjob_designer.gui.dialog.multi_region_texture_import_dialog import MultiRegionTextureImportDialog
 from paintjob_designer.gui.dialog.palette_apply_dialog import PaletteApplyDialog
-from paintjob_designer.gui.dialog.profile_picker_dialog import ProfilePickerDialog
 from paintjob_designer.gui.editor_mode import EditorMode
 from paintjob_designer.gui.handler.character_handler import BroughtUpCharacter, CharacterHandler
 from paintjob_designer.gui.handler.color_handler import ColorHandler
 from paintjob_designer.gui.handler.project_handler import ProjectHandler
 from paintjob_designer.gui.util.dialogs import FilePicker, MessageDialog
+from paintjob_designer.gui.widget.collapsible_tab_widget import CollapsibleTabWidget
 from paintjob_designer.gui.widget.color_picker import PsxColorPicker
 from paintjob_designer.gui.widget.kart_viewer import KartViewer, NullKartViewer
 from paintjob_designer.gui.widget.preview_sidebar import PreviewSidebar
@@ -57,6 +59,7 @@ from paintjob_designer.models import (
     Palette,
     PaletteLibrary,
     Profile,
+    SkippedCharacter,
     PsxColor,
     Rgb888,
     Skin,
@@ -64,12 +67,24 @@ from paintjob_designer.models import (
     SlotColors,
     SlotRegionPixels,
     SlotRegions,
+    WHEEL_FRAME_SIZE,
+    WHEEL_SLOT_NAMES,
+    Wheel,
+    WheelLibrary,
 )
-from paintjob_designer.profile.registry import ProfileRegistry
+from paintjob_designer.profile.loader import ProfileLoader
 from paintjob_designer.render.atlas_renderer import AtlasRenderer
 from paintjob_designer.render.atlas_uv_mapper import AtlasUvMapper
 from paintjob_designer.render.blend_mode_grouper import BlendModeGrouper
+from paintjob_designer.render.preview_image_writer import PreviewImageWriter
 from paintjob_designer.render.ray_picker import RayTrianglePicker
+from paintjob_designer.render.wheel_geometry import (
+    SIDE_FRAME,
+    TREAD_FRAME,
+    WHEEL_CENTERS,
+    WHEEL_HALF_SIZE,
+    WheelGeometry,
+)
 from paintjob_designer.texture.multi_region_texture_importer import MultiRegionTextureImporter
 from paintjob_designer.texture.single_region_texture_importer import (
     SingleRegionTextureImporter,
@@ -90,7 +105,7 @@ class MainWindow(QMainWindow):
         self,
         config_store: ConfigStore,
         iso_root_validator: IsoRootValidator,
-        profile_registry: ProfileRegistry,
+        profile_loader: ProfileLoader,
         character_handler: CharacterHandler,
         color_handler: ColorHandler,
         project_handler: ProjectHandler,
@@ -107,12 +122,15 @@ class MainWindow(QMainWindow):
         multi_region_texture_importer: MultiRegionTextureImporter,
         texture_rotator: TextureRotator,
         texture_exporter: TextureExporter,
+        preview_image_writer: PreviewImageWriter,
+        wheel_geometry: WheelGeometry,
         skin_writer,
         message: MessageDialog,
         files: FilePicker,
         profile_holder: ProfileHolder,
         paintjob_library_controller: PaintjobLibraryController,
         skin_library_controller: SkinLibraryController,
+        wheel_library_controller: WheelLibraryController,
         palette_library_controller: PaletteLibraryController,
         preview_sidebar: PreviewSidebar,
         slot_editor: SlotEditor,
@@ -123,7 +141,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._config_store = config_store
         self._validator = iso_root_validator
-        self._profile_registry = profile_registry
+        self._profile_loader = profile_loader
         self._character_handler = character_handler
         self._color_handler = color_handler
         self._project_handler = project_handler
@@ -140,6 +158,8 @@ class MainWindow(QMainWindow):
         self._multi_region_texture_importer = multi_region_texture_importer
         self._texture_rotator = texture_rotator
         self._texture_exporter = texture_exporter
+        self._preview_image_writer = preview_image_writer
+        self._wheel_geometry = wheel_geometry
         self._skin_writer = skin_writer
         self._message = message
         self._files = files
@@ -147,6 +167,7 @@ class MainWindow(QMainWindow):
 
         self._paintjob_controller = paintjob_library_controller
         self._skin_controller = skin_library_controller
+        self._wheel_controller = wheel_library_controller
         self._palette_controller = palette_library_controller
 
         self._preview_sidebar = preview_sidebar
@@ -163,6 +184,7 @@ class MainWindow(QMainWindow):
         # sidebar widgets and wire their internal signals.
         self._sidebar = self._paintjob_controller._sidebar
         self._skin_sidebar = self._skin_controller._sidebar
+        self._wheel_sidebar = self._wheel_controller._sidebar
         self._palette_sidebar = self._palette_controller._sidebar
 
         # Sidebar row labels resolve raw character ids to display names
@@ -179,10 +201,13 @@ class MainWindow(QMainWindow):
         # to the controllers — they own all read/write access from here
         # on.
         self._paintjob_controller.replace_library(
-            self._restore_library_from_config(),
+            self.restore_library(self._config.library, PaintjobLibrary),
         )
         self._skin_controller.replace_library(
-            self._restore_skin_library_from_config(),
+            self.restore_library(self._config.skins, SkinLibrary),
+        )
+        self._wheel_controller.replace_library(
+            self.restore_library(self._config.wheels, WheelLibrary),
         )
         self._palette_controller.replace_library(
             self._restore_palette_library_from_config(),
@@ -191,6 +216,7 @@ class MainWindow(QMainWindow):
         self._editor_mode: EditorMode = EditorMode.PAINTJOB
         self._preview_paintjob: Paintjob | None = None
         self._preview_skin: Skin | None = None
+        self._preview_wheel: Wheel | None = None
 
         self._wire_controller_signals()
 
@@ -202,13 +228,12 @@ class MainWindow(QMainWindow):
         # `_current_character` is the PREVIEW character — the mesh the 3D
         # viewer shows and the VRAM we sample defaults from. It's driven by
         # the preview-character combo at the top of the viewer pane, NOT
-        # the sidebar (which lists paintjobs now).
+        # the sidebar (which lists assets).
         self._current_character: CharacterProfile | None = None
         self._current_bundle: BroughtUpCharacter | None = None
 
-        # Per-tab preview-character memory: keyed by editor mode
-        # (EditorMode.PAINTJOB / SKIN), value is the last character_id the user
-        # picked while that tab was active. On tab change we restore that
+        # Per-tab preview-character memory: keyed by editor mode, value is
+        # the last character_id the user picked while that tab was active. On tab change we restore that
         # character if it's still in the new combo's list, falling back
         # to the first compatible character when not.
         self._remembered_character_id: dict[EditorMode, str] = {}
@@ -218,6 +243,7 @@ class MainWindow(QMainWindow):
         # samples the selected gouraud index.
         self._slot_triangle_mask: dict[str, list[int]] = {}
         self._vertex_triangle_mask: dict[int, list[int]] = {}
+        self._vertex_usage_cache: tuple[BroughtUpCharacter, tuple[set[int], set[int]]] | None = None
 
         # Lazy-created on first open and reused so slider state survives
         # Apply→Apply→Close cycles.
@@ -248,6 +274,7 @@ class MainWindow(QMainWindow):
             editor_mode_provider=lambda: self._editor_mode,
             iso_root_provider=lambda: self._config.iso_root,
             undo_stack=self._undo_stack,
+            color_picker=self._color_picker,
             parent_widget=self,
         )
 
@@ -255,6 +282,7 @@ class MainWindow(QMainWindow):
             vertex_assembler=self._vertex_assembler,
             bundle_provider=lambda: self._current_bundle,
             on_positions=lambda pos: self._kart_viewer.set_frame_positions(pos),
+            on_wheels_rolling=lambda rolling: self._kart_viewer.set_wheels_rolling(rolling),
             parent=self,
         )
 
@@ -276,6 +304,10 @@ class MainWindow(QMainWindow):
         return self._skin_controller.library
 
     @property
+    def _wheel_library(self) -> WheelLibrary:
+        return self._wheel_controller.library
+
+    @property
     def _palette_library(self) -> PaletteLibrary:
         return self._palette_controller.library
 
@@ -287,19 +319,29 @@ class MainWindow(QMainWindow):
     def _current_skin(self) -> Skin | None:
         return self._skin_controller.current
 
+    @property
+    def _current_wheel(self) -> Wheel | None:
+        return self._wheel_controller.current
+
     def _wire_controller_signals(self) -> None:
         """Forward controller events to the editor-side handlers."""
         pjc = self._paintjob_controller
         pjc.selection_changed.connect(self._on_paintjob_selection_changed)
-        pjc.library_changed.connect(self._on_paintjob_library_changed)
+        pjc.library_changed.connect(self._on_library_changed)
         pjc.library_reset.connect(self._undo_stack_clear_safely)
         pjc.mutated.connect(self._schedule_autosave)
 
         skc = self._skin_controller
         skc.selection_changed.connect(self._on_skin_selection_changed)
-        skc.library_changed.connect(self._on_skin_library_changed)
+        skc.library_changed.connect(self._on_library_changed)
         skc.library_reset.connect(self._undo_stack_clear_safely)
         skc.mutated.connect(self._schedule_autosave)
+
+        whc = self._wheel_controller
+        whc.selection_changed.connect(self._on_wheel_selection_changed)
+        whc.library_changed.connect(self._on_library_changed)
+        whc.library_reset.connect(self._undo_stack_clear_safely)
+        whc.mutated.connect(self._schedule_autosave)
 
         plc = self._palette_controller
         plc.save_from_slot_requested.connect(self._on_save_palette_from_slot)
@@ -310,11 +352,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_undo_stack"):
             self._undo_stack.clear()
 
-    def _on_paintjob_library_changed(self) -> None:
-        if hasattr(self, "_preview_sidebar"):
-            self._sync_preview_sidebar_sources()
-
-    def _on_skin_library_changed(self) -> None:
+    def _on_library_changed(self) -> None:
         if hasattr(self, "_preview_sidebar"):
             self._sync_preview_sidebar_sources()
 
@@ -359,10 +397,6 @@ class MainWindow(QMainWindow):
             shortcut=QKeySequence("Ctrl+L"),
         )
 
-        self._add_action(
-            file_menu, "Switch &Profile...", self._on_switch_profile,
-        )
-
         file_menu.addSeparator()
         self._add_action(
             file_menu, "Export Paintjob &Library As...",
@@ -391,6 +425,24 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
         self._add_action(
+            file_menu, "Export &Wheel Library As...",
+            self._wheel_controller.export_library,
+        )
+        self._add_action(
+            file_menu, "Import W&heels...",
+            lambda: self._wheel_controller.import_files(
+                self._config.iso_root or None,
+            ),
+        )
+
+        file_menu.addSeparator()
+        self._export_preview_action = self._add_action(
+            file_menu, "Export Preview as &Image...", self._on_export_preview_image,
+            shortcut=QKeySequence("Ctrl+E"),
+        )
+
+        file_menu.addSeparator()
+        self._add_action(
             file_menu, "E&xit", self.close,
             shortcut=QKeySequence.StandardKey.Quit,
         )
@@ -404,7 +456,7 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(redo_action)
 
         view_menu = menubar.addMenu("&View")
-        self._add_action(
+        self._reset_camera_action = self._add_action(
             view_menu, "Reset &Camera", self._on_reset_camera,
             shortcut=QKeySequence("R"),
         )
@@ -465,13 +517,14 @@ class MainWindow(QMainWindow):
         self._sidebar_tabs = QTabWidget()
         self._sidebar_tabs.addTab(paintjobs_tab, "Paintjobs")
         self._sidebar_tabs.addTab(self._skin_sidebar, "Skins")
+        self._sidebar_tabs.addTab(self._wheel_sidebar, "Wheels")
         self._sidebar_tabs.addTab(self._preview_sidebar, "Preview")
         self._sidebar_tabs.currentChanged.connect(self._on_sidebar_tab_changed)
         sidebar_layout.addWidget(self._sidebar_tabs, 1)
         sidebar_layout.addWidget(self._animation.panel)
 
-        # Stash for tab-change identity checks — the inner widget hosting
-        # the paintjob list is no longer the tab's root widget.
+        # Stash for tab-change identity checks: the tab's root widget wraps
+        # the paintjob list, so the list itself can't identify the tab.
         self._paintjobs_tab = paintjobs_tab
         self._preview_tab = self._preview_sidebar
 
@@ -480,12 +533,8 @@ class MainWindow(QMainWindow):
         viewer_layout.setContentsMargins(0, 0, 0, 0)
         viewer_layout.setSpacing(0)
 
-        # Preview-character selector sits above the 3D viewer so the
-        # "which mesh am I seeing this paintjob on?" question is
-        # answered at a glance. Paintjobs themselves are character-
-        # agnostic in the new model; this dropdown just picks the
-        # preview context (mesh + VRAM defaults). Hidden in Preview
-        # mode where the sidebar's own character combo drives.
+        # Picks which mesh and VRAM defaults the active asset previews on.
+        # Hidden in Preview mode, where the sidebar's own combo drives.
         self._preview_strip = QWidget()
         preview_strip_layout = QHBoxLayout(self._preview_strip)
         preview_strip_layout.setContentsMargins(8, 4, 8, 4)
@@ -500,6 +549,9 @@ class MainWindow(QMainWindow):
 
         self._kart_viewer.gl_init_failed.connect(self._on_gl_init_failed)
         self._kart_viewer.eyedropper_picked.connect(self._on_eyedropper_picked)
+        self._kart_viewer.empty_space_context_requested.connect(
+            self._on_viewer_context_menu,
+        )
         viewer_layout.addWidget(self._kart_viewer, 1)
 
         for editor in self._slot_editors:
@@ -531,20 +583,17 @@ class MainWindow(QMainWindow):
             self._on_vertex_transform_requested,
         )
 
-        self._right_tabs = QTabWidget()
+        self._right_tabs = CollapsibleTabWidget()
         self._right_tabs.addTab(self._slot_editor, "CLUT slots")
         self._right_tabs.addTab(self._vertex_editor, "Vertex slots")
         self._right_tabs.addTab(self._orphan_slot_editor, "Orphan Slots")
+        self._right_tabs.set_page_visible(self._orphan_slot_editor, False)
 
         splitter.addWidget(sidebar_container)
         splitter.addWidget(viewer_container)
         splitter.addWidget(self._right_tabs)
 
-        # Stored so `_on_gl_init_failed` can swap the viewer for a placeholder
-        # without having to re-walk the splitter hierarchy. The viewer lives
-        # inside the viewer-container widget now (so the preview-character
-        # combo can sit above it), so the placeholder replaces the inner
-        # widget rather than a splitter pane.
+        # Stored so `_on_gl_init_failed` can swap the viewer for a placeholder.
         self._splitter = splitter
         self._viewer_container = viewer_container
         self._viewer_container_layout = viewer_layout
@@ -554,48 +603,40 @@ class MainWindow(QMainWindow):
         splitter.setSizes([240, 600, 600])
 
         self.setCentralWidget(splitter)
-        self._build_library_toolbar()
-
-        # Permanent status-bar widget so the active profile is always visible
-        # regardless of what transient message `showMessage` is showing.
-        self._profile_status_label = QLabel()
-        self.statusBar().addPermanentWidget(self._profile_status_label)
-        self._update_window_title()
+        self.setWindowTitle("Paintjob Designer")
 
         self.statusBar().showMessage("Ready.")
 
-    def _build_library_toolbar(self) -> None:
-        """Top toolbar — only the things that aren't asset-scoped."""
-        toolbar = self.addToolBar("Library")
-        toolbar.setMovable(False)
-
-        toolbar.addAction("Switch Profile...", self._on_switch_profile)
-
-        self.addToolBarBreak()
-
     def _bootstrap(self) -> None:
         if self._validator.validate(self._config.iso_root).ok:
-            self._load_profile(self._config.last_profile_id)
+            self._load_profile()
             return
 
         self.statusBar().showMessage(
             "No ISO loaded — use File → Load ISO... to pick your extracted CTR directory.",
         )
 
-    def _load_profile(self, profile_id: str) -> None:
-        try:
-            self._profile = self._profile_registry.load(profile_id)
-        except FileNotFoundError as exc:
-            self._message.error(self, "Profile not found", str(exc))
-            return
-
-        self._update_window_title()
-
-        # Push the active profile + iso into the shared holder + controllers
-        # so the new-asset flows can pick characters and seed slots.
-        self._profile_holder.set(self._profile)
+    def _load_profile(self) -> bool:
+        """Load the profile for the configured ISO; False when it can't be read."""
         self._paintjob_controller.set_iso_root(self._config.iso_root)
         self._skin_controller.set_iso_root(self._config.iso_root)
+        self._wheel_controller.set_iso_root(self._config.iso_root)
+
+        try:
+            result = self._profile_loader.load(self._config.iso_root)
+        except (OSError, ValueError) as exc:
+            self._profile = None
+            self._profile_holder.set(None)
+            self._clear_preview_render()
+            self._populate_preview_character_combo([])
+            self._message.error(self, "Could not load characters", str(exc))
+            return False
+
+        self._profile = result.profile
+
+        # Push the active profile into the shared holder so the new-asset
+        # flows can pick characters and seed slots.
+        self._profile_holder.set(self._profile)
 
         # Fresh profile = fresh context. Drop any per-tab memory from
         # the previous profile (character ids may differ).
@@ -616,6 +657,23 @@ class MainWindow(QMainWindow):
         # waits — its first item only auto-selects when the user
         # actually switches to the Skins tab.
         self._paintjob_controller.show_initial_selection()
+
+        if result.skipped:
+            self._warn_skipped_characters(result.skipped)
+
+        return True
+
+    def _warn_skipped_characters(self, skipped: list[SkippedCharacter]) -> None:
+        details = "\n".join(
+            f"  • {c.display_name} — {c.mesh_source}: {c.reason}" for c in skipped
+        )
+        self._message.warn(
+            self, "Some characters could not be loaded",
+            "A legitimate NTSC-U copy of the game contains every character, "
+            "so this ISO may be broken or modified. Everything else has "
+            f"loaded normally.\n\nNot loaded:\n{details}",
+        )
+
     def _populate_preview_character_combo(
         self,
         characters: list[CharacterProfile],
@@ -641,6 +699,7 @@ class MainWindow(QMainWindow):
         self._vertex_triangle_mask = {}
         for editor in self._slot_editors:
             editor.set_slots([])
+        self._right_tabs.set_page_visible(self._orphan_slot_editor, False)
         self._vertex_editor.set_colors([])
         self._kart_viewer.clear()
 
@@ -661,23 +720,6 @@ class MainWindow(QMainWindow):
         # Combo is at -1 from `_populate_preview_character_combo`; setting
         # to a valid index always emits and triggers `_reload_preview`.
         self._preview_character_combo.setCurrentIndex(target_index)
-
-    def _profile_display_name(self) -> str:
-        """Human-readable label for the active profile, or `"(none)"`."""
-        if self._profile is None:
-            return "(none)"
-
-        return self._profile.display_name or self._profile.id
-
-    def _update_window_title(self) -> None:
-        """Bake the active profile into the window title so it's always visible."""
-        self.setWindowTitle(f"Paintjob Designer — {self._profile_display_name()}")
-
-        # Mirror the profile into the status bar as a permanent widget so it
-        # stays visible even when the transient message area shows other info.
-        label = getattr(self, "_profile_status_label", None)
-        if label is not None:
-            label.setText(f"Profile: {self._profile_display_name()}")
 
     def _is_iso_ready(self) -> bool:
         return self._validator.validate(self._config.iso_root).ok and self._profile is not None
@@ -714,6 +756,12 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self, "No skin selected",
                 "Create a skin (Skins tab → New) or pick one from the list "
+                "before performing this action.",
+            )
+        elif self._editor_mode == EditorMode.WHEEL:
+            QMessageBox.information(
+                self, "No wheel selected",
+                "Create a wheel (Wheels tab → New) or pick one from the list "
                 "before performing this action.",
             )
         else:
@@ -755,36 +803,26 @@ class MainWindow(QMainWindow):
         # controllers — undo history clears via the library_reset signal.
         self._paintjob_controller.replace_library(PaintjobLibrary())
         self._skin_controller.replace_library(SkinLibrary())
+        self._wheel_controller.replace_library(WheelLibrary())
         self._current_character = None
         self._current_bundle = None
         self._schedule_autosave()
 
-        self._load_profile(self._config.last_profile_id)
-        self.statusBar().showMessage(
-            "ISO loaded. Create a paintjob (sidebar → New) or import one to begin.",
-        )
+        if self._load_profile():
+            self.statusBar().showMessage(
+                "ISO loaded. Create a paintjob (sidebar → New) or import one to begin.",
+            )
 
-    def _restore_library_from_config(self) -> PaintjobLibrary:
-        """Rehydrate the persisted library from the config blob."""
-        raw = self._config.library
+    @staticmethod
+    def restore_library(raw, library_type):
+        """Rehydrate a persisted library blob, or an empty one if it's unusable."""
         if not isinstance(raw, dict):
-            return PaintjobLibrary()
+            return library_type()
 
         try:
-            return PaintjobLibrary.model_validate(raw)
+            return library_type.model_validate(raw)
         except Exception:
-            return PaintjobLibrary()
-
-    def _restore_skin_library_from_config(self) -> SkinLibrary:
-        """Rehydrate the persisted skin library from the config blob."""
-        raw = self._config.skins
-        if not isinstance(raw, dict):
-            return SkinLibrary()
-
-        try:
-            return SkinLibrary.model_validate(raw)
-        except Exception:
-            return SkinLibrary()
+            return library_type()
 
     def _restore_palette_library_from_config(self) -> PaletteLibrary:
         """Rehydrate the persisted palette library from the config list."""
@@ -817,6 +855,7 @@ class MainWindow(QMainWindow):
                 p.model_dump() for p in self._palette_library.palettes
             ]
             self._config.skins = self._skin_library.model_dump(by_alias=True)
+            self._config.wheels = self._wheel_library.model_dump(by_alias=True)
             self._config_store.save(self._config)
         except OSError:
             self.statusBar().showMessage(
@@ -943,41 +982,48 @@ class MainWindow(QMainWindow):
     def _on_reset_camera(self) -> None:
         self._kart_viewer.reset_camera()
 
-    def _on_switch_profile(self) -> None:
-        """Let the user pick a different target profile."""
-        available = self._profile_registry.available()
-        if not available:
-            QMessageBox.warning(
-                self, "No profiles available",
-                "No profiles found under config/profiles/.",
+    def _on_viewer_context_menu(self, global_pos: QPoint) -> None:
+        menu = QMenu(self)
+        menu.addAction(self._reset_camera_action)
+        menu.addAction(self._export_preview_action)
+        menu.exec(global_pos)
+
+    def _on_export_preview_image(self) -> None:
+        """Save the 3D viewer's current frame as a PNG / JPEG / WebP image."""
+        capture = self._kart_viewer.capture_rgba()
+        if capture is None:
+            self._message.info(
+                self, "Nothing to export",
+                "Pick a character to preview before exporting an image.",
             )
 
             return
 
-        dialog = ProfilePickerDialog(
-            available, self._config.last_profile_id, parent=self,
+        character_id = self._current_character.id if self._current_character else "preview"
+        default_path = Path(self._config.iso_root or Path.home()) / f"{character_id}_preview.png"
+        save_path = self._files.pick_save_path(
+            self, "Export preview image", default_path,
+            "PNG images (*.png);;JPEG images (*.jpg *.jpeg);;WebP images (*.webp)",
         )
-        if dialog.exec() != ProfilePickerDialog.DialogCode.Accepted:
+
+        if save_path is None:
             return
 
-        chosen = dialog.selected_profile_id()
-        if chosen == self._config.last_profile_id and self._profile is not None:
+        if save_path.suffix.lower() not in PreviewImageWriter.FORMATS:
+            save_path = save_path.with_name(f"{save_path.name}.png")
+
+        rgba, width, height = capture
+        try:
+            self._preview_image_writer.write(
+                rgba, width, height, save_path,
+                jpeg_background=self._kart_viewer.background_rgb(),
+            )
+        except (OSError, ValueError) as exc:
+            self._message.error(self, "Export failed", str(exc))
+
             return
 
-        self._config.last_profile_id = chosen
-        self._config_store.save(self._config)
-
-        # Profile change invalidates every in-flight asset since character IDs
-        # / slot names may differ. Reset both libraries via their controllers.
-        self._paintjob_controller.replace_library(PaintjobLibrary())
-        self._skin_controller.replace_library(SkinLibrary())
-        self._current_character = None
-        self._current_bundle = None
-        self._schedule_autosave()
-
-        self._load_profile(chosen)
-        self._update_window_title()
-        self.statusBar().showMessage(f"Switched to profile: {self._profile_display_name()}")
+        self.statusBar().showMessage(f"Exported preview → {save_path}")
 
     def _on_gl_init_failed(self, reason: str) -> None:
         """Replace the 3D viewer with a placeholder when the GL context fails."""
@@ -998,9 +1044,9 @@ class MainWindow(QMainWindow):
         self._viewer_container_layout.replaceWidget(self._kart_viewer, placeholder)
         self._kart_viewer.deleteLater()
 
-        # Calls that used to land on the viewer (highlight, set_atlas, ...)
-        # would now crash; swap in a no-op stand-in that silently absorbs
-        # them so the rest of the loading path doesn't need to know.
+        # Later calls (highlight, set_atlas, ...) would crash on the deleted
+        # viewer; this no-op stand-in absorbs them so the rest of the loading
+        # path doesn't need to know.
         self._kart_viewer = NullKartViewer()
         self.statusBar().showMessage("3D preview disabled (GL init failed).")
 
@@ -1025,7 +1071,7 @@ class MainWindow(QMainWindow):
         self._current_character = character
         # Per-tab memory: this is now the character to restore next time
         # the user comes back to this tab.
-        if self._editor_mode in (EditorMode.PAINTJOB, EditorMode.SKIN):
+        if self._editor_mode in (EditorMode.PAINTJOB, EditorMode.SKIN, EditorMode.WHEEL):
             self._remembered_character_id[self._editor_mode] = character.id
 
         self._reload_preview()
@@ -1045,8 +1091,11 @@ class MainWindow(QMainWindow):
             bundle = self._character_handler.load_character(
                 self._config.iso_root, self._current_character, render_asset,
             )
-        except FileNotFoundError as exc:
-            self.statusBar().showMessage(f"Load failed: {exc}")
+        except (OSError, ValueError, EOFError) as exc:
+            # ValueError: the mesh changed on disk and samples a CLUT the
+            # profile's derived slots don't cover. Picking again won't help
+            # until the ISO is reloaded, so say so instead of dying in a slot.
+            self.statusBar().showMessage(f"Load failed: {exc}. Reload the ISO if it changed on disk.")
             return
 
         self._current_bundle = bundle
@@ -1059,6 +1108,7 @@ class MainWindow(QMainWindow):
             bundle.mesh, vertex_overrides=self._active_vertex_overrides(),
         )
         self._kart_viewer.set_mesh(assembled, bundle.mesh.texture_layouts)
+        self._push_wheels_to_viewer(bundle)
 
         self._slot_triangle_mask = self._build_slot_triangle_mask(assembled, bundle)
         self._vertex_triangle_mask = self._build_vertex_triangle_mask(assembled)
@@ -1069,8 +1119,44 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"{self._current_character.display_name}: "
             f"{len(bundle.slot_regions.slots)} slots, "
-            f"{len(bundle.slot_regions.unmatched_palettes)} unmatched palettes, "
             f"{assembled.triangle_count} triangles",
+        )
+
+    def _push_wheels_to_viewer(self, bundle: BroughtUpCharacter) -> None:
+        """Place the four wheels; hovercraft characters have none."""
+        if self._current_character is None or self._current_character.kart_type != KartType.KART:
+            self._kart_viewer.set_wheels(None)
+            return
+
+        mesh = bundle.mesh
+        centers = np.array([
+            self._wheel_geometry.game_to_mesh_space(center, mesh.scale, mesh.frame.offset)
+            for center in WHEEL_CENTERS
+        ], dtype=np.float32)
+
+        uvs = []
+        for frame in range(len(WHEEL_SLOT_NAMES)):
+            x, y = self._wheel_geometry.frame_origin(frame)
+            u0 = x * 4 / AtlasRenderer.ATLAS_WIDTH
+            v0 = y / AtlasRenderer.ATLAS_HEIGHT
+            uvs.append((
+                u0, v0,
+                u0 + WHEEL_FRAME_SIZE / AtlasRenderer.ATLAS_WIDTH,
+                v0 + WHEEL_FRAME_SIZE / AtlasRenderer.ATLAS_HEIGHT,
+            ))
+
+        atlas = np.frombuffer(bundle.atlas_rgba, dtype=np.uint8).reshape(
+            AtlasRenderer.ATLAS_HEIGHT, AtlasRenderer.ATLAS_WIDTH, AtlasRenderer.BYTES_PER_PIXEL,
+        )
+
+        def bounds(frame: int):
+            x, y = self._wheel_geometry.frame_origin(frame)
+            alpha = atlas[y:y + WHEEL_FRAME_SIZE, x * 4:x * 4 + WHEEL_FRAME_SIZE, 3]
+            return self._wheel_geometry.opaque_bounds(alpha > 0)
+
+        self._kart_viewer.set_wheels(
+            centers, WHEEL_HALF_SIZE / 1020.0, uvs,
+            side=bounds(SIDE_FRAME), tread=bounds(TREAD_FRAME),
         )
 
     def _on_paintjob_selection_changed(self, paintjob: Paintjob | None) -> None:
@@ -1100,21 +1186,25 @@ class MainWindow(QMainWindow):
 
         return [c for c in self._profile.characters if c.kart_type == kart_type]
 
-    def _active_asset(self) -> Paintjob | Skin | None:
+    def _active_asset(self) -> Paintjob | Skin | Wheel | None:
         """The asset the viewer is currently rendering. Preview mode returns
-        a synthesized Paintjob merging the chosen paintjob + skin slots."""
+        a synthesized Paintjob merging the chosen paintjob + skin + wheel slots."""
         if self._editor_mode == EditorMode.PREVIEW:
             return self._build_preview_composite()
 
         if self._editor_mode == EditorMode.SKIN:
             return self._current_skin
 
+        if self._editor_mode == EditorMode.WHEEL:
+            return self._current_wheel
+
         return self._current_paintjob
 
     def _build_preview_composite(self) -> Paintjob | None:
         paintjob = self._preview_paintjob
         skin = self._preview_skin
-        if paintjob is None and skin is None:
+        wheel = self._preview_wheel
+        if paintjob is None and skin is None and wheel is None:
             return None
 
         merged: dict[str, SlotColors] = {}
@@ -1123,6 +1213,9 @@ class MainWindow(QMainWindow):
 
         if skin is not None:
             merged.update(skin.slots)
+
+        if wheel is not None:
+            merged.update(wheel.slots)
 
         return Paintjob(
             name="(preview composite)",
@@ -1143,6 +1236,9 @@ class MainWindow(QMainWindow):
         if self._editor_mode == EditorMode.SKIN:
             return {s.name for s in self._current_character.skin_slots}
 
+        if self._editor_mode == EditorMode.WHEEL:
+            return set(WHEEL_SLOT_NAMES)
+
         return {s.name for s in self._current_character.kart_slots}
 
     def _active_vertex_overrides(self) -> dict[int, Rgb888]:
@@ -1154,8 +1250,17 @@ class MainWindow(QMainWindow):
 
         return {}
 
+    def _vertex_tab_applies(self) -> bool:
+        """Only skins carry vertex colors; the preview shows them read-only."""
+        return self._editor_mode in (EditorMode.SKIN, EditorMode.PREVIEW)
+
+    def _refresh_vertex_tab(self) -> None:
+        self._right_tabs.set_page_visible(self._vertex_editor, self._vertex_tab_applies())
+
     def _populate_vertex_editor(self) -> None:
-        if self._current_bundle is None:
+        self._refresh_vertex_tab()
+
+        if self._current_bundle is None or not self._vertex_tab_applies():
             self._vertex_editor.set_colors([])
             return
 
@@ -1171,7 +1276,7 @@ class MainWindow(QMainWindow):
             else:
                 effective.append(Rgb888(r=base.r, g=base.g, b=base.b))
 
-        self._vertex_editor.set_colors(effective, overridden=overridden)
+        self._vertex_editor.set_colors(effective, overridden=overridden, visible=self._vertex_usage()[0])
         self._vertex_editor.set_editable(
             self._editor_mode == EditorMode.SKIN and self._current_skin is not None,
         )
@@ -1191,6 +1296,8 @@ class MainWindow(QMainWindow):
             new_mode = EditorMode.PAINTJOB
         elif widget is self._skin_sidebar:
             new_mode = EditorMode.SKIN
+        elif widget is self._wheel_sidebar:
+            new_mode = EditorMode.WHEEL
         elif widget is getattr(self, "_preview_tab", None):
             new_mode = EditorMode.PREVIEW
         else:
@@ -1212,10 +1319,11 @@ class MainWindow(QMainWindow):
             return
 
         self._preview_strip.setVisible(True)
-        controller = (
-            self._paintjob_controller if new_mode == EditorMode.PAINTJOB
-            else self._skin_controller
-        )
+        controller = {
+            EditorMode.PAINTJOB: self._paintjob_controller,
+            EditorMode.SKIN: self._skin_controller,
+            EditorMode.WHEEL: self._wheel_controller,
+        }[new_mode]
 
         if controller.current is None:
             # First entry into this tab — let the controller pick the
@@ -1230,6 +1338,8 @@ class MainWindow(QMainWindow):
         asset = controller.current
         if new_mode == EditorMode.PAINTJOB:
             characters = self._characters_matching_kart_type(asset.kart_type)
+        elif new_mode == EditorMode.WHEEL:
+            characters = self._characters_matching_kart_type(KartType.KART)
         else:
             characters = self._characters_for_skin(asset)
 
@@ -1238,16 +1348,17 @@ class MainWindow(QMainWindow):
 
     def _update_editors_for_mode(self) -> None:
         """Enable or disable the right-pane editor tabs based on current mode."""
-        editable = self._editor_mode in (EditorMode.PAINTJOB, EditorMode.SKIN)
+        editable = self._editor_mode in (EditorMode.PAINTJOB, EditorMode.SKIN, EditorMode.WHEEL)
 
         for editor in self._slot_editors:
             editor.setEnabled(editable)
 
         self._vertex_editor.setEnabled(editable and self._editor_mode == EditorMode.SKIN)
+        self._refresh_vertex_tab()
         self._refresh_slot_button_strip()
 
     def _refresh_slot_button_strip(self) -> None:
-        editable = self._editor_mode in (EditorMode.PAINTJOB, EditorMode.SKIN)
+        editable = self._editor_mode in (EditorMode.PAINTJOB, EditorMode.SKIN, EditorMode.WHEEL)
         enabled = editable and self._active_asset() is not None
 
         for editor in self._slot_editors:
@@ -1259,11 +1370,11 @@ class MainWindow(QMainWindow):
             return
 
         self._preview_sidebar.set_sources(
-            self._profile.characters, self._library, self._skin_library,
+            self._profile.characters, self._library, self._skin_library, self._wheel_library,
         )
 
     def _on_preview_composition_changed(
-        self, character_id: str, paintjob_index: int, skin_index: int,
+        self, character_id: str, paintjob_index: int, skin_index: int, wheel_index: int,
     ) -> None:
         """Sidebar combos changed — rebuild the preview composite + reload."""
         if self._profile is None:
@@ -1282,6 +1393,11 @@ class MainWindow(QMainWindow):
             self._preview_skin = self._skin_library.skins[skin_index]
         else:
             self._preview_skin = None
+
+        if 0 <= wheel_index < self._wheel_library.count():
+            self._preview_wheel = self._wheel_library.wheels[wheel_index]
+        else:
+            self._preview_wheel = None
 
         if self._editor_mode != EditorMode.PREVIEW:
             return
@@ -1313,6 +1429,19 @@ class MainWindow(QMainWindow):
             return
 
         characters = self._characters_for_skin(skin)
+        self._populate_preview_character_combo(characters)
+        self._restore_preview_character(characters)
+
+    def _on_wheel_selection_changed(self, wheel: Wheel | None) -> None:
+        """Active wheel changed — wheels fit every kart character."""
+        self._transform.close_pending_preview()
+        self._clear_preview_render()
+
+        if wheel is None:
+            self._populate_preview_character_combo([])
+            return
+
+        characters = self._characters_matching_kart_type(KartType.KART)
         self._populate_preview_character_combo(characters)
         self._restore_preview_character(characters)
 
@@ -1364,7 +1493,8 @@ class MainWindow(QMainWindow):
         if self._current_bundle is None:
             for editor in self._slot_editors:
                 editor.set_slots([])
-        
+
+            self._right_tabs.set_page_visible(self._orphan_slot_editor, False)
             return
 
         mode_slots = self._active_slot_names()
@@ -1380,15 +1510,9 @@ class MainWindow(QMainWindow):
             else:
                 orphan[name] = regions
 
-        # Mesh-sampled CLUTs that don't correspond to any profile slot.
-        # The atlas decodes them but no profile entry claims them — surface
-        # them in the orphan tab in every editing mode so artists can recolor
-        # body palettes the profile didn't anticipate (e.g. Crash's back).
-        for unmatched in self._current_bundle.slot_regions.unmatched_regions:
-            orphan[unmatched.slot_name] = unmatched
-
         self._populate_one_slot_editor(self._slot_editor, mesh_mapped)
         self._populate_one_slot_editor(self._orphan_slot_editor, orphan)
+        self._right_tabs.set_page_visible(self._orphan_slot_editor, bool(orphan))
         self._refresh_slot_button_strip()
 
     def _populate_one_slot_editor(
@@ -1464,8 +1588,8 @@ class MainWindow(QMainWindow):
         # Apply immediately so the user sees the change, then push a
         # command that represents the same operation so it can be reversed.
         # SetSlotColorCommand's first redo is a no-op. Routes through the
-        # active asset (paintjob or skin) — both have the same `.slots`
-        # shape so the apply path duck-types on it.
+        # active asset — every asset type has the same `.slots` shape so
+        # the apply path duck-types on it.
         asset = self._active_asset()
         self.apply_color_edit_from_command(asset, slot, color_index, new_color)
         self._undo_stack.push(SetSlotColorCommand(
@@ -1489,7 +1613,7 @@ class MainWindow(QMainWindow):
         self._ensure_vertex_transform_dialog()
         self._vertex_transform_dialog.set_colors(
             self._current_vertex_effective_colors(),
-            transformable_indices=self._safe_vertex_transform_indices(),
+            **self._vertex_scope(),
         )
 
         if not self._vertex_transform_dialog.isVisible():
@@ -1502,25 +1626,35 @@ class MainWindow(QMainWindow):
             self._vertex_transform_dialog.raise_()
             self._vertex_transform_dialog.activateWindow()
 
-    def _safe_vertex_transform_indices(self) -> set[int]:
-        """Gouraud indices safe to bulk-transform: those used only by
-        untextured triangles. Indices shared with textured triangles are
-        excluded — the shader's `texture * vcolor * 2` modulation would
-        tint the paintjob otherwise.
-        """
-        if self._current_bundle is None:
-            return set()
+    def _vertex_usage(self) -> tuple[set[int], set[int]]:
+        """(character, kart) gouraud indices. Kart triangles are the ones
+        textured with a kart-slot CLUT; every other triangle, untextured ones
+        included, belongs to the character. The two share one color table."""
+        if self._current_bundle is None or self._current_character is None:
+            return set(), set()
 
-        used_textured: set[int] = set()
-        used_untextured: set[int] = set()
+        cached = self._vertex_usage_cache
+        if cached is not None and cached[0] is self._current_bundle:
+            return cached[1]
 
-        for draw in self._current_bundle.mesh.draw_commands:
-            if draw.tex_index == 0:
-                used_untextured.add(draw.color_index)
+        mesh = self._current_bundle.mesh
+        kart_cluts = {(s.clut.x, s.clut.y) for s in self._current_character.kart_slots}
+        assembled = self._vertex_assembler.assemble(mesh)
+        character: set[int] = set()
+        kart: set[int] = set()
+        for layout_index, indices in zip(assembled.texture_layout_indices, assembled.gouraud_color_indices):
+            layout = mesh.texture_layouts[layout_index - 1] if layout_index != 0 else None
+            if layout is not None and (layout.palette_x * 16, layout.palette_y) in kart_cluts:
+                kart.update(indices)
             else:
-                used_textured.add(draw.color_index)
+                character.update(indices)
 
-        return used_untextured - used_textured
+        self._vertex_usage_cache = (self._current_bundle, (character, kart))
+        return character, kart
+
+    def _vertex_scope(self) -> dict[str, set[int]]:
+        character, kart = self._vertex_usage()
+        return {"skin_indices": character, "shared_indices": character & kart}
 
     def _ensure_vertex_transform_dialog(self) -> None:
         if self._vertex_transform_dialog is not None:
@@ -1533,6 +1667,7 @@ class MainWindow(QMainWindow):
         dialog = VertexTransformDialog(
             color_transformer=self._color_transformer,
             color_converter=self._color_converter,
+            color_picker=self._color_picker,
             parent=self,
         )
         dialog.preview_changed.connect(self._on_vertex_transform_preview)
@@ -1601,7 +1736,7 @@ class MainWindow(QMainWindow):
 
         self._vertex_transform_dialog.set_colors(
             self._current_vertex_effective_colors(),
-            transformable_indices=self._safe_vertex_transform_indices(),
+            **self._vertex_scope(),
         )
         self._vertex_transform_dialog.commit_finished()
 
@@ -1810,7 +1945,7 @@ class MainWindow(QMainWindow):
     def _on_eyedropper_picked(
         self, tex_layout_index: int, byte_u: float, byte_v: float,
     ) -> None:
-        """Resolve an Alt+Click 3D pick to a (slot, color_index) and reveal it."""
+        """Resolve a right-click 3D pick to a (slot, color_index) and reveal it."""
         if self._current_bundle is None or self._current_character is None:
             return
 
@@ -1933,10 +2068,9 @@ class MainWindow(QMainWindow):
         if slot is None:
             return
 
-        # Bulk operations are available in either edit mode; each writes
-        # to the active asset (paintjob or skin). Preview mode is
-        # read-only — no menu.
-        if self._editor_mode not in (EditorMode.PAINTJOB, EditorMode.SKIN):
+        # Bulk operations are available in every edit mode; each writes
+        # to the active asset. Preview mode is read-only — no menu.
+        if self._editor_mode not in (EditorMode.PAINTJOB, EditorMode.SKIN, EditorMode.WHEEL):
             return
 
         menu = QMenu(self)
@@ -2020,6 +2154,7 @@ class MainWindow(QMainWindow):
             current_colors=current_colors,
             color_converter=self._color_converter,
             gradient_generator=self._gradient_generator,
+            color_picker=self._color_picker,
             parent=self,
         )
 
@@ -2065,8 +2200,8 @@ class MainWindow(QMainWindow):
     def _on_import_slot_texture(self, slot_name: str) -> None:
         """Import a PNG as the slot's 4bpp pixel + CLUT payload.
 
-        Targets the active asset (paintjob or skin) — both store pixel
-        payloads on `SlotColors.pixels` so the same path works for either.
+        Targets the active asset — every asset type stores pixel payloads
+        on `SlotColors.pixels`, so the same path works for all of them.
         """
         if (
             self._current_bundle is None
@@ -2269,8 +2404,7 @@ class MainWindow(QMainWindow):
         return written
 
     def _after_texture_import(self, slot_name: str, source_label: str) -> None:
-        # Texture imports invalidate undo (commands captured pre-import
-        # SlotColors refs).
+        # Undo commands hold the old refs; see `LibraryController.library_reset`.
         self._undo_stack.clear()
         self._populate_slot_editor()
         self._reload_preview()
@@ -2326,6 +2460,7 @@ class MainWindow(QMainWindow):
 
         asset.slots[slot_name] = SlotColors(colors=list(slot.colors), pixels=[])
 
+        # Undo commands hold the old refs; see `LibraryController.library_reset`.
         self._undo_stack.clear()
         self._populate_slot_editor()
         self._reload_preview()
@@ -2395,7 +2530,7 @@ class MainWindow(QMainWindow):
             ],
         )
 
-        # Texture rotation invalidates undo (commands captured pre-rotate refs).
+        # Undo commands hold the old refs; see `LibraryController.library_reset`.
         self._undo_stack.clear()
         self._populate_slot_editor()
         self._reload_preview()
@@ -2454,8 +2589,22 @@ class MainWindow(QMainWindow):
             AtlasRenderer.ATLAS_HEIGHT,
         )
 
-    def _switch_to_asset_if_needed(self, asset: Paintjob | Skin) -> None:
+    def _switch_to_asset_if_needed(self, asset: Paintjob | Skin | Wheel) -> None:
         """Select `asset` in its sidebar so an undo visibly reverts the edit."""
+        if isinstance(asset, Wheel):
+            if self._current_wheel is asset:
+                return
+
+            try:
+                index = self._wheel_library.wheels.index(asset)
+            except ValueError:
+                return
+
+            self._editor_mode = EditorMode.WHEEL
+            self._wheel_controller.select_index(index)
+            self._reload_preview()
+            return
+
         if isinstance(asset, Skin):
             if self._current_skin is asset:
                 return
@@ -2540,6 +2689,10 @@ class MainWindow(QMainWindow):
         self, asset: Paintjob | Skin, slot_name: str,
     ) -> tuple[int, int]:
         """Resolve the asset's base-character CLUT coords for a given slot."""
+        if isinstance(asset, Wheel):
+            clut = self._wheel_geometry.frame_clut(WHEEL_SLOT_NAMES.index(slot_name))
+            return clut.x, clut.y
+
         base_id = (
             asset.character_id if isinstance(asset, Skin)
             else asset.base_character_id
@@ -2551,7 +2704,7 @@ class MainWindow(QMainWindow):
 
         for slot_profile in base_char.slots:
             if slot_profile.name == slot_name:
-                return slot_profile.clut_race.x, slot_profile.clut_race.y
+                return slot_profile.clut.x, slot_profile.clut.y
 
         return 0, 0
 

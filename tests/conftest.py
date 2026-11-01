@@ -18,10 +18,12 @@ from paintjob_designer.models import SlotColors, PsxColor
 from paintjob_designer.paintjob.reader import PaintjobReader
 from paintjob_designer.paintjob.writer import PaintjobWriter
 from paintjob_designer.profile.reader import ProfileReader
-from paintjob_designer.profile.registry import ProfileRegistry
+from paintjob_designer.profile.loader import ProfileLoader
+from paintjob_designer.profile.skin_slot_deriver import SkinSlotDeriver
 from paintjob_designer.render.atlas_renderer import AtlasRenderer
 from paintjob_designer.render.atlas_uv_mapper import AtlasUvMapper
 from paintjob_designer.render.slot_region_deriver import SlotRegionDeriver
+from paintjob_designer.render.wheel_geometry import WheelGeometry
 from paintjob_designer.skin.reader import SkinReader
 from paintjob_designer.skin.writer import SkinWriter
 from paintjob_designer.vram.cache import VramCache
@@ -44,8 +46,13 @@ def profile_reader():
 
 
 @pytest.fixture
-def profile_registry(profile_reader):
-    return ProfileRegistry(profile_reader)
+def skin_slot_deriver():
+    return SkinSlotDeriver()
+
+
+@pytest.fixture
+def profile_loader(profile_reader, ctr_model_reader, skin_slot_deriver):
+    return ProfileLoader(profile_reader, ctr_model_reader, skin_slot_deriver)
 
 
 @pytest.fixture
@@ -90,7 +97,7 @@ def atlas_uv_mapper():
 
 @pytest.fixture
 def character_handler(ctr_model_reader, vram_cache, slot_region_deriver, atlas_renderer):
-    return CharacterHandler(ctr_model_reader, vram_cache, slot_region_deriver, atlas_renderer)
+    return CharacterHandler(ctr_model_reader, vram_cache, slot_region_deriver, atlas_renderer, WheelGeometry())
 
 
 @pytest.fixture

@@ -60,6 +60,7 @@ def controller(
         files=fake_files,
         palette_from_image_creator=fake_palette_from_image_creator,
         palette_from_colors_creator=fake_palette_from_colors_creator,
+        color_picker=MagicMock(),
     )
 
 

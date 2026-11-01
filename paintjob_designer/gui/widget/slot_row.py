@@ -21,5 +21,4 @@ class SlotRow(QFrame):
         super().mousePressEvent(event)
 
     def set_focused(self, focused: bool) -> None:
-        """Toggle the focus highlight on this row."""
         self.setStyleSheet(FOCUSED_STYLE if focused else "")

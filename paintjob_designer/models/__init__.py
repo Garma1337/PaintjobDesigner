@@ -33,10 +33,10 @@ from paintjob_designer.models.profile import (
     CharacterProfile,
     ClutCoord,
     KartType,
-    PaintjobSlotProfile,
     Profile,
+    ProfileLoadResult,
+    SkippedCharacter,
     SlotProfile,
-    VramPageDimensions,
 )
 from paintjob_designer.models.quantized_texture import QuantizedTexture
 from paintjob_designer.models.rotated_texture import RotatedTexture
@@ -47,6 +47,13 @@ from paintjob_designer.models.slot_regions import (
     SlotRegions,
 )
 from paintjob_designer.models.vram_page import VramPage
+from paintjob_designer.models.wheel import (
+    WHEEL_FRAME_COUNT,
+    WHEEL_FRAME_SIZE,
+    WHEEL_SLOT_NAMES,
+    Wheel,
+    WheelLibrary,
+)
 
 __all__ = [
     "MetadataEdit",
@@ -61,8 +68,6 @@ __all__ = [
     "SlotProfile",
     "ClutCoord",
     "KartType",
-    "PaintjobSlotProfile",
-    "VramPageDimensions",
     "Paintjob",
     "PaintjobLibrary",
     "Palette",
@@ -89,4 +94,9 @@ __all__ = [
     "SlotRegions",
     "CharacterSlotRegions",
     "VramPage",
+    "Wheel",
+    "WheelLibrary",
+    "WHEEL_FRAME_COUNT",
+    "WHEEL_FRAME_SIZE",
+    "WHEEL_SLOT_NAMES",
 ]

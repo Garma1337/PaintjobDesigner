@@ -86,7 +86,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ("config/profiles", "config/profiles"),
+        ("config/profile.json", "config"),
         ("paintjob_designer/gui/widget/shaders", "paintjob_designer/gui/widget/shaders"),
         ("app.ico", "."),
     ],

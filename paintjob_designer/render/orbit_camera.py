@@ -89,15 +89,17 @@ class OrbitCamera:
         self._last_fit_target = self._target.copy()
         self._last_fit_distance = self._distance
 
-    def view_matrix(self) -> np.ndarray:
-        eye = self._target + np.array([
+    @property
+    def eye(self) -> np.ndarray:
+        return self._target + np.array([
             self._distance * math.cos(self._pitch) * math.sin(self._yaw),
             self._distance * math.sin(self._pitch),
             self._distance * math.cos(self._pitch) * math.cos(self._yaw),
         ], dtype=np.float32)
 
+    def view_matrix(self) -> np.ndarray:
         return self.look_at(
-            eye, self._target, np.array([0.0, 1.0, 0.0], dtype=np.float32),
+            self.eye, self._target, np.array([0.0, 1.0, 0.0], dtype=np.float32),
         )
 
     @staticmethod

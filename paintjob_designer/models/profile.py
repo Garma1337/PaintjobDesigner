@@ -22,14 +22,17 @@ class SlotProfile:
     """One paintable CLUT on one character."""
 
     name: str = ""
-    clut_race: ClutCoord = field(default_factory=ClutCoord)
-    clut_menu: ClutCoord | None = None
+    clut: ClutCoord = field(default_factory=ClutCoord)
     non_portable: bool = False
 
 
 @dataclass
 class CharacterProfile:
-    """One character + the CLUTs that paintjobs and skins can edit."""
+    """One character + the CLUTs that paintjobs and skins can edit.
+
+    `kart_slots` come from the bundled profile; `skin_slots` are derived
+    from the character's mesh when the ISO loads.
+    """
 
     id: str = ""
     display_name: str = ""
@@ -44,25 +47,25 @@ class CharacterProfile:
 
 
 @dataclass
-class VramPageDimensions:
-    width: int = 1024
-    height: int = 512
-
-
-@dataclass
-class PaintjobSlotProfile:
-    """One entry in the profile's `paintjob_slots` table."""
-    name: str = ""
-    default_character_id: str | None = None
-
-
-@dataclass
 class Profile:
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     schema_version: int = SCHEMA_VERSION
-    id: str = ""
-    display_name: str = ""
-    vram_page: VramPageDimensions = field(default_factory=VramPageDimensions)
     characters: list[CharacterProfile] = field(default_factory=list)
-    paintjob_slots: list[PaintjobSlotProfile] = field(default_factory=list)
+
+
+@dataclass
+class SkippedCharacter:
+    """A profile character whose mesh could not be loaded from the ISO."""
+
+    display_name: str = ""
+    mesh_source: str = ""
+    reason: str = ""
+
+
+@dataclass
+class ProfileLoadResult:
+    """A profile holding only the loadable characters, plus the ones left out."""
+
+    profile: Profile = field(default_factory=Profile)
+    skipped: list[SkippedCharacter] = field(default_factory=list)

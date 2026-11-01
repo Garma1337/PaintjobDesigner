@@ -6,14 +6,12 @@ import pytest
 
 
 from paintjob_designer.models import KartType
+from paintjob_designer.profile.loader import ProfileLoader
 
 
 def _profile_json(**overrides) -> str:
     doc = {
-        "schema_version": 3,
-        "id": "saphi",
-        "display_name": "Saphi TrackROM",
-        "vram_page": {"width": 1024, "height": 512},
+        "schema_version": 4,
         "characters": [
             {
                 "id": "crash",
@@ -21,10 +19,9 @@ def _profile_json(**overrides) -> str:
                 "mesh_source": "bigfile/models/racers/hi/crash.ctr",
                 "kart_type": "kart",
                 "kart_slots": [
-                    {"name": "front", "clut_race": {"x": 112, "y": 255}},
-                    {"name": "back", "clut_race": {"x": 112, "y": 250}},
+                    {"name": "front", "clut": {"x": 112, "y": 255}},
+                    {"name": "back", "clut": {"x": 112, "y": 250}},
                 ],
-                "skin_slots": [],
             }
         ],
     }
@@ -38,11 +35,7 @@ class TestProfileReader:
     def test_reads_full_profile(self, profile_reader):
         profile = profile_reader.read(_profile_json())
 
-        assert profile.schema_version == 3
-        assert profile.id == "saphi"
-        assert profile.display_name == "Saphi TrackROM"
-        assert profile.vram_page.width == 1024
-        assert profile.vram_page.height == 512
+        assert profile.schema_version == 4
         assert len(profile.characters) == 1
 
     def test_parses_character(self, profile_reader):
@@ -61,8 +54,8 @@ class TestProfileReader:
 
         front = profile.characters[0].kart_slots[0]
         assert front.name == "front"
-        assert front.clut_race.x == 112
-        assert front.clut_race.y == 255
+        assert front.clut.x == 112
+        assert front.clut.y == 255
         assert front.non_portable is False
 
     def test_parses_non_portable_flag(self, profile_reader):
@@ -72,9 +65,8 @@ class TestProfileReader:
             "mesh_source": "x.ctr",
             "kart_type": "kart",
             "kart_slots": [
-                {"name": "floor", "clut_race": {"x": 304, "y": 252}, "non_portable": True},
+                {"name": "floor", "clut": {"x": 304, "y": 252}, "non_portable": True},
             ],
-            "skin_slots": [],
         }])
 
         profile = profile_reader.read(doc)
@@ -88,8 +80,7 @@ class TestProfileReader:
             "display_name": "Nitros Oxide",
             "mesh_source": "oxide.ctr",
             "kart_type": "hovercraft",
-            "kart_slots": [{"name": "hoverkart", "clut_race": {"x": 288, "y": 248}}],
-            "skin_slots": [{"name": "head", "clut_race": {"x": 96, "y": 248}}],
+            "kart_slots": [{"name": "hoverkart", "clut": {"x": 288, "y": 248}}],
         }])
 
         profile = profile_reader.read(doc)
@@ -97,7 +88,6 @@ class TestProfileReader:
 
         assert oxide.kart_type == KartType.HOVERCRAFT
         assert [s.name for s in oxide.kart_slots] == ["hoverkart"]
-        assert [s.name for s in oxide.skin_slots] == ["head"]
 
     def test_rejects_unknown_kart_type(self, profile_reader):
         doc = _profile_json(characters=[{
@@ -106,7 +96,6 @@ class TestProfileReader:
             "mesh_source": "x.ctr",
             "kart_type": "spaceship",
             "kart_slots": [],
-            "skin_slots": [],
         }])
 
         with pytest.raises(ValueError, match="Unknown kart_type"):
@@ -120,7 +109,6 @@ class TestProfileReader:
             "display_name": "Crash",
             "mesh_source": "x.ctr",
             "kart_slots": [],
-            "skin_slots": [],
         }])
 
         profile = profile_reader.read(doc)
@@ -130,7 +118,7 @@ class TestProfileReader:
     def test_accepts_bytes_input(self, profile_reader):
         profile = profile_reader.read(_profile_json().encode("utf-8"))
 
-        assert profile.id == "saphi"
+        assert profile.characters[0].id == "crash"
 
     def test_rejects_non_object_root(self, profile_reader):
         with pytest.raises(ValueError, match="root must be a JSON object"):
@@ -140,44 +128,15 @@ class TestProfileReader:
         with pytest.raises(ValueError, match="schema_version"):
             profile_reader.read(_profile_json(schema_version=999))
 
-    def test_defaults_vram_page_when_missing(self, profile_reader):
-        doc = json.dumps({"schema_version": 3, "id": "minimal"})
-
-        profile = profile_reader.read(doc)
-
-        assert profile.vram_page.width == 1024
-        assert profile.vram_page.height == 512
-
     def test_empty_character_list_when_missing(self, profile_reader):
-        doc = json.dumps({"schema_version": 3, "id": "minimal"})
-
-        profile = profile_reader.read(doc)
+        profile = profile_reader.read(json.dumps({"schema_version": 4}))
 
         assert profile.characters == []
 
-    def test_empty_paintjob_slots_when_missing(self, profile_reader):
-        profile = profile_reader.read(_profile_json())
+    def test_bundled_profile_parses(self, profile_reader):
+        profile = profile_reader.read(ProfileLoader.bundled_path().read_bytes())
 
-        assert profile.paintjob_slots == []
-
-    def test_parses_paintjob_slots(self, profile_reader):
-        doc = _profile_json(paintjob_slots=[
-            {"name": "Crash", "default_character_id": "crash"},
-            {"name": "Saphi", "default_character_id": None},
-            # default_character_id missing entirely -> None
-            {"name": "Mystery"},
-        ])
-
-        profile = profile_reader.read(doc)
-
-        assert len(profile.paintjob_slots) == 3
-
-        crash, saphi, mystery = profile.paintjob_slots
-        assert crash.name == "Crash"
-        assert crash.default_character_id == "crash"
-
-        assert saphi.name == "Saphi"
-        assert saphi.default_character_id is None
-
-        assert mystery.name == "Mystery"
-        assert mystery.default_character_id is None
+        ids = [c.id for c in profile.characters]
+        assert len(ids) == 16
+        assert "oxide" in ids
+        assert all(c.kart_slots and not c.skin_slots for c in profile.characters)

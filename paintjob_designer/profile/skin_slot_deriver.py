@@ -7,9 +7,8 @@ class SkinSlotDeriver:
     """Computes a character's skin slots from its mesh + known kart slots.
 
     A "skin slot" is any distinct CLUT coord used by the character's
-    `.ctr` that isn't already covered by a kart slot. Names follow the
-    `extra_<vram_x>_<vram_y>` convention so they line up with how the
-    deriver would emit them at runtime.
+    `.ctr` that isn't already covered by a kart slot, named
+    `extra_<vram_x>_<vram_y>`.
     """
 
     _PALETTES_PER_VRAM_ROW = 16
@@ -26,14 +25,13 @@ class SkinSlotDeriver:
         coords are subtracted by VRAM-coord identity.
         """
         used_vram = self._distinct_vram_clut_coords(mesh)
-        kart_used = {(s.clut_race.x, s.clut_race.y) for s in kart_slots}
+        kart_used = {(s.clut.x, s.clut.y) for s in kart_slots}
         extras = sorted(used_vram - kart_used, key=lambda c: (c[1], c[0]))
 
         return [
             SlotProfile(
                 name=f"extra_{x}_{y}",
-                clut_race=ClutCoord(x=x, y=y),
-                clut_menu=None,
+                clut=ClutCoord(x=x, y=y),
             )
             for x, y in extras
         ]

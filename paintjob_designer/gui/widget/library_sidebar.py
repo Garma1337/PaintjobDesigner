@@ -122,7 +122,7 @@ class LibraryRowDelegate(QStyledItemDelegate):
 
 
 class LibrarySidebar(QWidget):
-    """Shared list + button-row scaffolding for the paintjob / skin sidebars.
+    """Shared list + button-row scaffolding for the paintjob / skin / wheel sidebars.
 
     Subclasses populate items via `set_library` (their own typed method)
     and add type-specific buttons via `_add_extra_buttons`. Selection

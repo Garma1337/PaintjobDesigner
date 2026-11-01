@@ -11,14 +11,14 @@ from paintjob_designer.color.transform import ColorTransformer
 from paintjob_designer.gui.command.bulk_transform_command import BulkColorEdit, BulkTransformCommand
 from paintjob_designer.gui.editor_mode import EditorMode
 from paintjob_designer.gui.handler.color_handler import ColorHandler
+from paintjob_designer.gui.widget.color_picker import PsxColorPicker
 from paintjob_designer.gui.widget.slot_editor import SlotEditor
 from paintjob_designer.gui.widget.transform_panel import TransformCandidate, TransformColorsPanel
-from paintjob_designer.models import CharacterProfile, Paintjob, PsxColor, Skin, SlotColors
+from paintjob_designer.models import WHEEL_SLOT_NAMES, CharacterProfile, Paintjob, PsxColor, Skin, SlotColors
 from paintjob_designer.render.atlas_renderer import AtlasRenderer
 
-# (asset_id, slot_name) — id() because Paintjob/Skin aren't hashable.
+# (asset_id, slot_name) — id() because assets aren't hashable.
 SnapshotKey = tuple[int, str]
-# (asset, slot, snapshotted SlotColors | None)
 SnapshotEntry = tuple[object, object, SlotColors | None]
 
 
@@ -44,11 +44,13 @@ class TransformPanelCoordinator(QObject):
         editor_mode_provider: Callable[[], EditorMode],
         iso_root_provider: Callable[[], str],
         undo_stack: QUndoStack,
+        color_picker: PsxColorPicker,
         parent_widget: QWidget | None = None,
     ) -> None:
         super().__init__(parent_widget)
         self._transformer = color_transformer
         self._converter = color_converter
+        self._picker = color_picker
         self._color_handler = color_handler
         self._slot_editor_provider = slot_editor_provider
         self._kart_viewer_provider = kart_viewer_provider
@@ -67,7 +69,7 @@ class TransformPanelCoordinator(QObject):
     def show(self, slot_override: str | None = None) -> None:
         # Refuse to open in preview mode (read-only) or when there's no
         # active asset / bundle to mutate.
-        if self._editor_mode_provider() not in (EditorMode.PAINTJOB, EditorMode.SKIN):
+        if self._editor_mode_provider() not in (EditorMode.PAINTJOB, EditorMode.SKIN, EditorMode.WHEEL):
             return
         if self._bundle_provider() is None or self._asset_provider() is None:
             return
@@ -116,11 +118,17 @@ class TransformPanelCoordinator(QObject):
             if mode == EditorMode.SKIN else []
         )
 
+        wheel_frame_candidates = (
+            self._build_candidates(self._slots_in_group("wheel"))
+            if mode == EditorMode.WHEEL else []
+        )
+
         self._panel.set_candidates(
             slot_candidates,
             kart_slot_candidates,
             skin_slot_candidates,
-            slot_name or "",
+            wheel_frame_candidates,
+            slot_label=slot_name or "",
         )
 
     def close_pending_preview(self) -> None:
@@ -142,6 +150,7 @@ class TransformPanelCoordinator(QObject):
         panel = TransformColorsPanel(
             color_transformer=self._transformer,
             color_converter=self._converter,
+            color_picker=self._picker,
             parent=self._parent_widget,
         )
 
@@ -158,6 +167,8 @@ class TransformPanelCoordinator(QObject):
 
         if group == "kart":
             slot_names = {s.name for s in character.kart_slots}
+        elif group == "wheel":
+            slot_names = set(WHEEL_SLOT_NAMES)
         else:
             slot_names = {s.name for s in character.skin_slots}
 

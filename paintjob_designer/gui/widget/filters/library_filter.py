@@ -8,10 +8,6 @@ class LibraryFilter:
     searchable field for that row (primary label + secondary label,
     typically). Empty / whitespace-only query matches everything so the
     list reverts to "no filter" without a separate clear path.
-
-    Pure logic, no Qt — sits under `gui/widget/filters/` so any future
-    list-style widget can plug it in without coupling to a specific
-    sidebar implementation.
     """
 
     def matches(self, query: str, *fields: str) -> bool:

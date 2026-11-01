@@ -13,9 +13,7 @@ class PaletteFromImageCreator:
     palette behaviour to a textured slot import) and discards the pixel
     payload — only the 16-entry CLUT is kept.
 
-    Source images don't have to match a slot's pixel dimensions: the
-    quantizer is fed the raw image at its native size, so palette quality
-    isn't degraded by an arbitrary resize policy.
+    Source images can be any size; they're quantized without resizing.
     """
 
     # Quantizer requires 4bpp-friendly width (multiple of 2). Pad to even.

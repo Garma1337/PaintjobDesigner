@@ -1,5 +1,7 @@
 # coding: utf-8
 
+import pytest
+
 from paintjob_designer.models import (
     BitDepth,
     BlendingMode,
@@ -40,7 +42,7 @@ def _character(slots: list[tuple[str, int, int]]) -> CharacterProfile:
         id="test",
         display_name="Test",
         kart_slots=[
-            SlotProfile(name=name, clut_race=ClutCoord(x=x, y=y))
+            SlotProfile(name=name, clut=ClutCoord(x=x, y=y))
             for name, x, y in slots
         ],
     )
@@ -52,18 +54,13 @@ class TestEmptyInputs:
         result = slot_region_deriver.derive(CtrMesh(), _character([]))
 
         assert result.slots == {}
-        assert result.unmatched_regions == []
 
-    def test_mesh_with_no_matching_slot_goes_to_unmatched(self, slot_region_deriver):
+    def test_mesh_clut_without_a_slot_is_rejected(self, slot_region_deriver):
         # TL has palette at (3, 10) -> VRAM CLUT at (48, 10); character has no slot there.
         mesh = CtrMesh(texture_layouts=[_tl(palette_x=3, palette_y=10)])
 
-        result = slot_region_deriver.derive(mesh, _character([]))
-
-        assert result.slots == {}
-        assert len(result.unmatched_regions) == 1
-        assert result.unmatched_regions[0].clut == ClutCoord(x=48, y=10)
-        assert len(result.unmatched_regions[0].regions) == 1
+        with pytest.raises(ValueError, match=r"\(48,10\)"):
+            slot_region_deriver.derive(mesh, _character([]))
 
 
 class TestSingleSlot:
@@ -178,36 +175,6 @@ class TestPageGrouping:
         assert starts == [(64, 0), (128, 256)]
 
 
-class TestUnmatched:
-
-    def test_unmatched_regions_share_entry_across_pages(self, slot_region_deriver):
-        # Two TLs with the same unmapped palette on different pages -> one
-        # SlotRegions bucket containing both regions.
-        mesh = CtrMesh(texture_layouts=[
-            _tl(palette_x=30, palette_y=200),
-            _tl(palette_x=30, palette_y=200, page_x=1),
-        ])
-
-        result = slot_region_deriver.derive(mesh, _character([]))
-
-        assert len(result.unmatched_regions) == 1
-        assert result.unmatched_regions[0].clut == ClutCoord(x=480, y=200)
-        assert len(result.unmatched_regions[0].regions) == 2
-
-    def test_mixed_matched_and_unmatched(self, slot_region_deriver):
-        mesh = CtrMesh(texture_layouts=[
-            _tl(palette_x=7, palette_y=255),   # -> CLUT (112, 255) matches 'front'
-            _tl(palette_x=30, palette_y=200),  # -> CLUT (480, 200) unmatched
-        ])
-        character = _character([("front", 112, 255)])
-
-        result = slot_region_deriver.derive(mesh, character)
-
-        assert "front" in result.slots
-        assert len(result.unmatched_regions) == 1
-        assert result.unmatched_regions[0].clut == ClutCoord(x=480, y=200)
-
-
 class TestOrphanProfileSlots:
     """Profile slots whose CLUT isn't sampled by any mesh layout still need
     to be editable — surfaced with an empty `regions` list."""
@@ -234,14 +201,6 @@ class TestOrphanProfileSlots:
         assert len(result.slots["front"].regions) == 1
         assert result.slots["menu_only"].regions == []
 
-    def test_orphan_slot_does_not_appear_as_unmatched(self, slot_region_deriver):
-        # An empty-region profile slot is a known editable slot, not an
-        # unmatched palette pulled from the mesh.
-        character = _character([("menu_only", 480, 200)])
-
-        result = slot_region_deriver.derive(CtrMesh(), character)
-
-        assert result.unmatched_regions == []
 
 
 class TestMultipleSlots:

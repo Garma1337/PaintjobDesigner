@@ -51,33 +51,11 @@ class SlotRegions:
 
 @dataclass
 class CharacterSlotRegions:
-    """Slot regions for one character."""
     character_id: str = ""
     slots: dict[str, SlotRegions] = field(default_factory=dict)
-    unmatched_regions: list[SlotRegions] = field(default_factory=list)
-
-    @property
-    def unmatched_palettes(self) -> list[ClutCoord]:
-        """Convenience view: just the CLUT coords of unmatched regions."""
-        return [sr.clut for sr in self.unmatched_regions]
 
     def all_slots(self) -> Iterator[tuple[str, SlotRegions]]:
-        """Iterate every slot name + regions, including unmatched mesh palettes
-        under their synthesized `unmatched@x,y` names.
-        """
         yield from self.slots.items()
 
-        for entry in self.unmatched_regions:
-            yield entry.slot_name, entry
-
     def find_slot(self, slot_name: str) -> SlotRegions | None:
-        """Look up by name across both profile slots and unmatched palettes."""
-        slot = self.slots.get(slot_name)
-        if slot is not None:
-            return slot
-
-        for entry in self.unmatched_regions:
-            if entry.slot_name == slot_name:
-                return entry
-
-        return None
+        return self.slots.get(slot_name)

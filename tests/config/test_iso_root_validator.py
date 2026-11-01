@@ -19,14 +19,19 @@ class TestValidate:
         result = iso_root_validator.validate("")
 
         assert result.ok is False
-        assert "bigfile/models/racers/hi/crash.ctr" in result.missing
         assert "bigfile/packs/shared.vrm" in result.missing
 
     def test_nonexistent_path_is_invalid(self, iso_root_validator, tmp_path):
         result = iso_root_validator.validate(tmp_path / "does-not-exist")
 
         assert result.ok is False
-        assert len(result.missing) == 2
+        assert result.missing == ["bigfile/packs/shared.vrm"]
+
+    def test_missing_character_mesh_does_not_invalidate_the_iso(self, iso_root_validator, tmp_path):
+        # Missing characters are reported by the profile loader instead.
+        _make_iso(tmp_path, ["bigfile/packs/shared.vrm"])
+
+        assert iso_root_validator.validate(tmp_path).ok is True
 
     def test_directory_with_all_required_files_is_valid(self, iso_root_validator, tmp_path):
         _make_iso(tmp_path, [

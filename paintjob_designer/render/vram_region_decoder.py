@@ -108,9 +108,7 @@ class VramRegionDecoder:
         return True
 
     def _psx_to_rgba(self, value: int) -> bytes:
-        # Mirrors the LUT: any black texel (RGB 0,0,0) renders transparent
-        # in-game regardless of the stp bit, so both 0x0000 and 0x8000
-        # become alpha=0 here. ColorConverter handles the non-black cases.
+        # Same black-texel transparency rule as the RGBA LUT (`psx_rgba_lut`).
         if (value & PSX_RGB_MASK) == 0:
             return b"\x00\x00\x00\x00"
 

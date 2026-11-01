@@ -11,8 +11,6 @@ from paintjob_designer.paintjob.writer import PaintjobWriter
 
 
 class ProjectHandler:
-    """Paintjob file I/O."""
-
     _LIBRARY_GLOB = "*.json"
 
     def __init__(

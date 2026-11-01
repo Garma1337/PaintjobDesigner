@@ -30,8 +30,6 @@ _SKIN_FILTER = f"Skin (*{_SKIN_EXT})"
 
 
 class SkinLibraryController(LibraryController[Skin, SkinLibrary]):
-    """Owns the skin library + sidebar + skin CRUD."""
-
     def __init__(
         self,
         sidebar: SkinLibrarySidebar,
@@ -155,7 +153,6 @@ class SkinLibraryController(LibraryController[Skin, SkinLibrary]):
             return
 
         index = self._library.add(loaded)
-        # Imports invalidate undo (commands captured pre-import refs).
         self.library_reset.emit()
         self._refresh_sidebar(index)
         self._after_mutation()
@@ -270,9 +267,7 @@ class SkinLibraryController(LibraryController[Skin, SkinLibrary]):
         self.apply_metadata(index, edit)
 
     def apply_metadata(self, index: int, edit) -> None:
-        """Atomic mutation: name + author. Skin character_id stays put.
-        Pure data manipulation; unit-testable without a Qt event loop.
-        """
+        """Atomic mutation: name + author. Skin character_id stays put."""
         if not (0 <= index < self._library.count()):
             return
 
@@ -288,7 +283,7 @@ class SkinLibraryController(LibraryController[Skin, SkinLibrary]):
 
         for slot_profile in character.skin_slots:
             defaults = self._color_handler.default_slot_colors_at(
-                self._iso_root, slot_profile.clut_race.x, slot_profile.clut_race.y,
+                self._iso_root, slot_profile.clut.x, slot_profile.clut.y,
             )
             slots[slot_profile.name] = SlotColors(colors=list(defaults))
 

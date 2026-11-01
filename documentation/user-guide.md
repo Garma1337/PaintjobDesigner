@@ -8,8 +8,7 @@ Things that aren't obvious from the UI. The basics — click a swatch, pick a co
 
 - [First Launch and ISO Layout](#first-launch-and-iso-layout)
 - [Profiles](#profiles)
-  - [Switching Profiles Resets the Session](#switching-profiles-resets-the-session)
-- [The Three Sidebar Tabs](#the-three-sidebar-tabs)
+- [The Sidebar Tabs](#the-sidebar-tabs)
   - [Per-Tab State](#per-tab-state)
 - [Paintjob Library](#paintjob-library)
   - [Library Position Matters](#library-position-matters)
@@ -20,6 +19,8 @@ Things that aren't obvious from the UI. The basics — click a swatch, pick a co
   - [Vertex Slots Tab](#vertex-slots-tab)
   - [Orphan Slots Tab](#orphan-slots-tab)
   - [Vertex Transform Panel](#vertex-transform-panel)
+- [Wheel Library](#wheel-library)
+  - [Sprite Sheets](#sprite-sheets)
 - [Preview Tab](#preview-tab)
 - [Preview Character](#preview-character)
 - [Slot Editor](#slot-editor)
@@ -31,6 +32,7 @@ Things that aren't obvious from the UI. The basics — click a swatch, pick a co
   - [Orbit Camera Controls](#orbit-camera-controls)
   - [Eyedropper](#eyedropper)
   - [Why Some Faces Can't Be Edited](#why-some-faces-cant-be-edited)
+  - [Export Preview Image](#export-preview-image)
   - [When the 3D View Doesn't Come Up](#when-the-3d-view-doesnt-come-up)
 - [Animation Playback](#animation-playback)
 - [Color Picker](#color-picker)
@@ -47,36 +49,29 @@ Things that aren't obvious from the UI. The basics — click a swatch, pick a co
 - [Library I/O](#library-io)
   - [Paintjob Library](#paintjob-library-io)
   - [Skin Library](#skin-library-io)
+  - [Wheel Library](#wheel-library-io)
   - [Drag-and-Drop](#drag-and-drop)
 
 ## First Launch and ISO Layout
 
-On first launch the window opens with empty sidebars and the status bar asks you to load an ISO. Use **File → Load ISO...** and point it at the root of your extracted CTR directory — specifically the folder that contains `bigfile/`. If a character's mesh isn't present, previewing that character shows a load-failed message; every other feature still works.
+On first launch the window opens with empty sidebars and the status bar asks you to load an ISO. Use **File → Load ISO...** and point it at the root of your extracted CTR directory — specifically the folder that contains `bigfile/`. A legitimate NTSC-U copy of the game contains every character, so if a character's mesh is missing or unreadable the ISO is probably broken or modified. The editor warns you which characters are affected, leaves them out, and loads everything else normally. The warning appears each time that ISO is loaded.
 
 The ISO path is remembered across sessions, so you only have to do this once per machine.
 
 ## Profiles
 
-A **profile** tells the editor which game you're authoring for — which characters exist, what their kart-side and skin-side slots are called, and where each slot's CLUT lives in video memory. Two profiles ship in the box:
+The editor ships with one built-in profile (`config/profile.json`) for the NTSC-U release of CTR. It lists the 16 characters, which `.ctr` file each one uses, its kart type, and the CLUT of each named kart slot (`front`, `back`, `floor`, ...).
 
-- **vanilla-ntsc-u** — the original NTSC-U release of CTR.
-- **saphi** — the Saphi mod.
+Everything else is read from the ISO when it loads: every other CLUT a character's mesh samples becomes a skin slot named `extra_<x>_<y>` (its VRAM coordinate), and each slot's texture regions come from the mesh's texture layouts.
 
-Switch between them from **File → Switch Profile...**. To author for a different mod, drop its profile JSON into the editor's `config/profiles/` folder and it'll appear in the picker on next launch.
+## The Sidebar Tabs
 
-### Switching Profiles Resets the Session
-
-Confirming a profile switch clears the current paintjob library, skin library, and undo history. Character ids, slot names, and slot lists can all differ between profiles, so carrying over the in-progress work wouldn't be safe. Save the libraries first if it matters.
-
-Your choice is remembered, so the next launch starts on the same profile.
-
-## The Three Sidebar Tabs
-
-The left sidebar has three tabs that share the 3D viewer + slot/vertex editors on the right:
+The left sidebar has four tabs that share the 3D viewer + slot/vertex editors on the right:
 
 - **Paintjobs** — kart-side recolors. Edits CLUTs that the in-game paintjob system swaps (front, back, motor, exhaust, etc.). Color Palettes are nested at the bottom of this tab — see [Color Palettes](#color-palettes).
 - **Skins** — character-bound recolors. Edits the character's own skin-side CLUTs (face, accessories) plus per-vertex gouraud colors (driver body).
-- **Preview** — read-only composition view. Pick a character + paintjob + skin and see them all combined.
+- **Wheels** — tire designs. Edits the 17 frames of the tire sprite every kart draws.
+- **Preview** — read-only composition view. Pick a character + paintjob + skin + wheel and see them all combined.
 
 ### Per-Tab State
 
@@ -149,7 +144,7 @@ The Skins sidebar also has the same **Filter...** box as the Paintjobs tab.
 
 ### Vertex Slots Tab
 
-When a skin is selected, the right pane shows a second tab labeled **Vertex slots** alongside the regular CLUT slot editor. It's a per-vertex row list — one row per entry in the active character's gouraud color table (`v0`, `v1`, …). Standard racers have 19–64 entries.
+When a skin is selected, the right pane shows a second tab labeled **Vertex slots** alongside the regular CLUT slot editor. It's a per-vertex row list (`v0`, `v1`, …) of the character's gouraud colors. The kart and the character share one color table, so only colors the character's faces use are listed: colors used only by kart faces (triangles textured with a kart-slot palette) and colors nothing uses are hidden, since changing them would recolor the kart rather than the character. Gaps in the numbering are those hidden colors.
 
 Each row carries a swatch + **Highlight** toggle + **Reset** button, mirroring the CLUT slot editor:
 
@@ -161,45 +156,49 @@ Each row carries a swatch + **Highlight** toggle + **Reset** button, mirroring t
 
 Above the list, a button strip exposes **Transform...** (opens the modeless vertex transform panel — see below) and **Reset all** (drops every vertex override on the active skin in one undo step).
 
-The Vertex slots tab is disabled in paintjob mode (paintjobs can't carry vertex overrides) and read-only in preview mode.
+The Vertex slots tab is read-only in preview mode and hidden in paintjob and wheel mode, since neither can carry vertex overrides.
 
 ### Orphan Slots Tab
 
-The right pane has a third tab labeled **Orphan Slots** (after CLUT slots and Vertex slots). It collects two kinds of CLUTs that don't fit the regular slot tab:
+When there's anything to show, the right pane has a third tab labeled **Orphan Slots** (after CLUT slots and Vertex slots); it's hidden otherwise. It lists kart slots whose CLUT the selected character's mesh doesn't sample. Several kart slots (`rearbase`, `seattop`, `underfloor`, `steering`, ...) use one CLUT shared by every kart, and some characters' meshes don't use all of them; the slot still recolors the other karts.
 
-1. **Profile-defined slots with no mesh polys** — slots the active profile declares but whose VRAM coord isn't sampled by any triangle in the character's mesh. Typical sources: menu screens, particles, hard-coded animation frames.
-2. **Mesh-sampled CLUTs with no profile entry** — palettes the mesh samples that the profile didn't anticipate. They appear under a synthesized name like `unmatched@112,250` (the CLUT's VRAM coord). Body palettes the profile didn't categorize show up here until you add them to the profile properly.
-
-For both kinds, colors are read live from VRAM at the slot's CLUT coord, and right-click → **Transform colors...**, **Gradient fill...**, and **Apply Color Palette** all work normally.
-
-The kinds differ on the mesh-region-dependent features:
-
-| Feature                    | Profile slot, no mesh polys | Mesh-sampled, no profile entry     |
-|----------------------------|-----------------------------|------------------------------------|
-| Highlight on focus         | No-op (no triangles)        | Dims everything except those polys |
-| Import / Export texture... | Hidden                      | Available                          |
-| Slot dimension hint        | Empty                       | Region size, like normal slots     |
-
-Editor-mode behavior:
-
-- **Profile slots with no mesh polys** respect the active editor mode: a `kart_slots` entry appears only in paintjob mode, a `skin_slots` entry only in skin mode.
-- **Mesh-sampled CLUTs with no profile entry** appear in both paintjob and skin modes — without a profile category there's no basis for hiding them, and edits flow into whichever asset (paintjob or skin) is active.
+Colors are read live from VRAM at the slot's CLUT coord, and right-click → **Transform colors...**, **Gradient fill...**, and **Apply Color Palette** all work normally. With no triangles behind them, orphan slots have no focus highlight, no dimension hint, and no texture import/export.
 
 ### Vertex Transform Panel
 
 The **Transform...** button on the Vertex slots tab opens a modeless panel with the same Apply / Close lifecycle and the same operation pipeline as the CLUT Transform Colors panel — see [Transform Colors](#transform-colors) for the full mode list. Applied to every gouraud vertex color in the character's table.
 
-**Important restriction.** CTR's renderer does texture modulation on textured triangles (`texture × vertex_color × 2`), so changing a vertex color used by a textured face also tints the paintjob's pixels. The panel auto-skips any gouraud index referenced by a textured triangle and reports the count in the intro line ("X of Y colors will be considered..."). Indices used only by untextured (Gouraud-only) triangles are the safe set the panel actually rewrites.
+**Shared colors.** A few listed colors are used by both the character and the kart. CTR draws textured faces as `texture × vertex_color × 2`, so changing one of those tints the kart in-game too. By default the panel leaves shared colors alone; tick **Include colors shared with the kart** to transform them as well. Kart-only colors are never transformed. The intro line reports how many colors the current scope covers ("X of Y colors will be considered...").
 
 Implementation note: vertex transform round-trips through the PSX 5-bit grid for the HSV math, so an extreme transform may snap colors slightly. For most paintjob-style operations (hue rotation, brightness shift) the snap is invisible.
 
+## Wheel Library
+
+The Wheels tab lists every wheel design in the session. **New** starts from the game's tires: every frame gets the vanilla colors, and frames without imported pixels keep the vanilla pixels.
+
+The game draws each wheel as a flat sprite that always faces the camera and picks one of 17 frames by the angle between the view and the axle: `frame00` is the tread seen edge-on, `frame16` the full side face, the frames in between for angles in between. With a free orbit camera that would make the wheels turn toward you from angles the game never shows, so the 3D view instead builds each wheel as a short cylinder fixed to the kart: two caps showing the side face (`frame16`) and a band around the rim textured with the tread (`frame00`), so the front view looks exactly like the tread frame. Its radius and width come from the opaque texels of those two frames. The in-between frames only show in the game. Tick **Rolling wheels** in the Animation panel to roll the wheels forward. All four wheels share one design, and so does every kart in a race.
+
+In the Wheels tab the slot editor lists the 17 frames. Each is an ordinary slot: 16 colors, a 32x32 texture, and the usual right-click tools (Transform colors, Gradient fill, Apply Color Palette, Import/Export texture, Rotate texture). Transform Colors has an **All wheel frames** scope to recolor the whole set in one go. Hovercraft characters have no wheels.
+
+Right-click a wheel row for **Edit metadata...**, **Import sprite sheet...**, **Export sprite sheet...**, **Export as JSON...**, **Replace from JSON...** and **Delete**.
+
+### Sprite Sheets
+
+Painting 17 frames one by one is slow, so a wheel can round-trip through one image:
+
+- **Export sprite sheet...** writes a 544x32 PNG with the 17 frames left to right (the game's tires for frames you haven't touched).
+- **Import sprite sheet...** reads any image made of 32x32 cells, left to right and top to bottom, with at least 17 cells. Each frame is quantized to its own 15 colors + transparent and replaces that frame's colors and pixels. Clears undo.
+
+Transparent pixels (alpha below 50%) stay transparent. The game's tires set the semi-transparency bit on a few colors so those texels blend 50% with what's behind them; imported colors never have it (the color picker keeps a color's existing bit but can't add one).
+
 ## Preview Tab
 
-The Preview tab is read-only. It has three combos:
+The Preview tab is read-only. It has four combos:
 
 - **Character** — any character from the active profile.
 - **Paintjob** — any paintjob whose `kart_type` matches the chosen character. "(none)" leaves kart slots at their vanilla values.
 - **Skin** — any skin bound to the chosen character. "(none)" leaves the skin slots and vertex colors at their vanilla values.
+- **Wheel** — any wheel design (kart characters only). "(none)" shows the game's tires.
 
 The 3D viewer shows the composition: paintjob CLUTs + skin CLUTs + skin vertex overrides, all on the chosen character's mesh. Editing is disabled (the swatch grid and vertex grid are visible but inactive); switch to the Paintjobs or Skins tab to make changes.
 
@@ -250,7 +249,7 @@ Each slot row has a checkable **Highlight** button. Clicking it dims every part 
 - **Reset button** — replaces every color in that slot with the original palette of the asset's **base/bound character** — *not* the current preview character. This way editing Crash's paintjob while previewing on Cortex still resets to Crash's original palette, which is what you mean by "revert." Ctrl+Z un-resets cleanly.
 - **Ctrl+Z** — reverses the most recent edit (color pick, reset, gradient fill, palette apply, or transform), regardless of which paintjob/skin is currently selected. If the reverted edit targets a different asset than the one on screen, the sidebar automatically moves to that asset (and switches tab if needed) so the visible state tracks the change.
 
-The undo history is session-wide and never auto-clears when you switch assets. It does clear when you import or replace a paintjob/skin, delete one, switch profiles, or load a different ISO — in those cases the previous edits can no longer be replayed meaningfully.
+The undo history is session-wide and never auto-clears when you switch assets. It does clear when you import or replace a paintjob/skin, delete one, or load a different ISO — in those cases the previous edits can no longer be replayed meaningfully.
 
 ## 3D Preview
 
@@ -262,9 +261,9 @@ The undo history is session-wide and never auto-clears when you switch assets. I
 
 ### Eyedropper
 
-**Alt+Click any surface on the 3D kart** to sample the slot and color under the cursor. The color picker opens pre-loaded with that color so one click + one pick changes the asset. If the click lands on a part of the model that isn't editable in the active mode (wheels, shared driver geometry in paintjob mode, kart slots in skin mode), the status bar says so and no picker opens.
+**Right-click any surface on the 3D kart** to sample the slot and color under the cursor. The color picker opens pre-loaded with that color so one click + one pick changes the asset. If the click lands on a part of the model that isn't editable in the active mode (shared driver geometry in paintjob mode, kart slots in skin mode), the status bar says so and no picker opens. Right-clicking empty space or the wheels opens the viewer's context menu instead (see [Export Preview Image](#export-preview-image)).
 
-Orbit and zoom still work with left-drag and the wheel regardless — eyedropper is bound to Alt+Click specifically.
+Orbit and zoom still work with left-drag and the mouse wheel regardless — the eyedropper is bound to right-click only.
 
 ### Why Some Faces Can't Be Edited
 
@@ -278,6 +277,12 @@ Character models mix several kinds of surfaces, and the editor mode decides whic
 The editor renders all of them the way the real game does, so the preview matches what the PS1 would draw. CTR ships many textures as greyscale templates that tint at runtime; you'll see them in their final tinted colors in the preview.
 
 The viewer also reads each triangle's PSX **blend mode** (Standard / Add / Subtract / Multiply) and renders semi-transparent surfaces (visors, glass panes, glows) in separate passes with the correct GPU blend equation. Faces that the game blends additively show through what's behind them in the preview rather than appearing opaque.
+
+### Export Preview Image
+
+**File → Export Preview as Image...** (Ctrl+E) saves exactly what the 3D view currently shows (camera angle, zoom, animation frame and wheels) as an image. Pick the format in the save dialog: **PNG**, **JPEG** or **WebP**. PNG and WebP have a transparent background; JPEG can't store transparency, so it uses the viewer's background color instead. The image is automatically cropped to the kart, with no empty space around it. Resolution still follows the size of the 3D pane, so enlarge the window first for a bigger shot, and anything outside the pane's view is cut off. Slot-focus dimming from the slot editor is left out, so the whole kart always renders at full brightness.
+
+**Right-click an empty spot** in the 3D view (anywhere that isn't the kart body) for a quick menu with **Reset Camera** and **Export Preview as Image...**.
 
 ### When the 3D View Doesn't Come Up
 
@@ -385,7 +390,7 @@ Right-click a slot row → **Export texture...** → pick a save path → the sl
 
 - Single-region slots write one file at the chosen path.
 - Multi-region slots write one file per region, suffixing `_0`, `_1`, ... before the `.png` extension.
-- Export is available even on `non_portable` slots — there's no cross-character upload concern when you're just saving what's already there. (Profile-defined orphan slots can't export — there are no mesh regions to dump. Mesh-sampled orphans do have regions and can export normally.)
+- Export is available even on `non_portable` slots — there's no cross-character upload concern when you're just saving what's already there. (Orphan slots can't export — there are no mesh regions to dump.)
 
 ### Rotate Texture
 
@@ -400,11 +405,11 @@ Rotation clears the undo history (commands captured pre-rotate slot refs).
 
 - **Ctrl+Z / Ctrl+Shift+Z** (or Ctrl+Y) — single session-wide history.
 - Undo works across asset selections AND across modes: edit paintjob A, switch to skin Y, edit Y, Ctrl+Z twice — Y's edit reverts first, then A's. If the reverted edit targets an asset that isn't currently selected, the sidebar (and tab, if needed) auto-switches.
-- **Importing or replacing an asset, deleting an asset, switching profiles, or loading a different ISO** all clear the undo history.
+- **Importing or replacing an asset, deleting an asset, or loading a different ISO** all clear the undo history.
 
 ## Library I/O
 
-The editor's outputs are **two library directories** — one for paintjobs, one for skins. Downstream mod-specific tools read each and produce whatever their mod needs. See [paintjob_library_format.md](schema/paintjob_library_format.md) and [skin_library_format.md](schema/skin_library_format.md) for the on-disk formats.
+The editor's outputs are **three library directories** — paintjobs, skins and wheels. Downstream mod-specific tools read each and produce whatever their mod needs. See [paintjob_library_format.md](schema/paintjob_library_format.md), [skin_library_format.md](schema/skin_library_format.md) and [wheel_library_format.md](schema/wheel_library_format.md) for the on-disk formats.
 
 ### Paintjob Library
 
@@ -422,6 +427,12 @@ The Paintjobs sidebar also has dedicated **Export...** and **Delete** buttons.
 - Right-click a skin → **Export as JSON...** / **Replace from JSON...** — same shape as paintjobs.
 
 The Skins sidebar has the same set of buttons as Paintjobs.
+
+### Wheel Library
+
+- **File → Export Wheel Library As...** writes every wheel to a chosen directory.
+- **File → Import Wheels...** appends wheel files to the current wheel library.
+- Right-click a wheel → **Export as JSON...** / **Replace from JSON...** — same shape as paintjobs.
 
 ### Drag-and-Drop
 

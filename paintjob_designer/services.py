@@ -17,6 +17,7 @@ from paintjob_designer.gui.controller.paintjob_library_controller import Paintjo
 from paintjob_designer.gui.controller.palette_library_controller import PaletteLibraryController
 from paintjob_designer.gui.controller.profile_holder import ProfileHolder
 from paintjob_designer.gui.controller.skin_library_controller import SkinLibraryController
+from paintjob_designer.gui.controller.wheel_library_controller import WheelLibraryController
 from paintjob_designer.gui.handler.character_handler import CharacterHandler
 from paintjob_designer.gui.handler.color_handler import ColorHandler
 from paintjob_designer.gui.handler.project_handler import ProjectHandler
@@ -28,21 +29,23 @@ from paintjob_designer.gui.widget.paintjob_library_sidebar import PaintjobLibrar
 from paintjob_designer.gui.widget.palette_sidebar import PaletteSidebar
 from paintjob_designer.gui.widget.preview_sidebar import PreviewSidebar
 from paintjob_designer.gui.widget.skin_library_sidebar import SkinLibrarySidebar
+from paintjob_designer.gui.widget.wheel_library_sidebar import WheelLibrarySidebar
 from paintjob_designer.gui.widget.slot_editor import SlotEditor
 from paintjob_designer.gui.widget.vertex_slot_editor import VertexSlotEditor
 from paintjob_designer.paintjob.reader import PaintjobReader
 from paintjob_designer.paintjob.writer import PaintjobWriter
 from paintjob_designer.palette.palette_from_colors_creator import PaletteFromColorsCreator
 from paintjob_designer.palette.palette_from_image_creator import PaletteFromImageCreator
-from paintjob_designer.profile.menu_clut_locator import MenuClutLocator
 from paintjob_designer.profile.reader import ProfileReader
-from paintjob_designer.profile.registry import ProfileRegistry
+from paintjob_designer.profile.loader import ProfileLoader
 from paintjob_designer.profile.skin_slot_deriver import SkinSlotDeriver
 from paintjob_designer.render.atlas_renderer import AtlasRenderer
 from paintjob_designer.render.atlas_uv_mapper import AtlasUvMapper
 from paintjob_designer.render.blend_mode_grouper import BlendModeGrouper
+from paintjob_designer.render.preview_image_writer import PreviewImageWriter
 from paintjob_designer.render.ray_picker import RayTrianglePicker
 from paintjob_designer.render.slot_region_deriver import SlotRegionDeriver
+from paintjob_designer.render.wheel_geometry import WheelGeometry
 from paintjob_designer.skin.reader import SkinReader
 from paintjob_designer.skin.writer import SkinWriter
 from paintjob_designer.texture.four_bpp_codec import FourBppCodec
@@ -50,6 +53,9 @@ from paintjob_designer.texture.multi_region_texture_importer import MultiRegionT
 from paintjob_designer.texture.single_region_texture_importer import SingleRegionTextureImporter
 from paintjob_designer.texture.texture_exporter import TextureExporter
 from paintjob_designer.texture.texture_quantizer import TextureQuantizer
+from paintjob_designer.texture.wheel_sheet import WheelSheet
+from paintjob_designer.wheel.reader import WheelReader
+from paintjob_designer.wheel.writer import WheelWriter
 from paintjob_designer.texture.texture_rotator import TextureRotator
 from paintjob_designer.vram.cache import VramCache
 from paintjob_designer.vram.reader import VramReader
@@ -74,11 +80,12 @@ container.register("gradient_generator", lambda c: GradientGenerator(c.resolve("
 container.register("ray_triangle_picker", lambda c: RayTrianglePicker())
 container.register("blend_mode_grouper", lambda c: BlendModeGrouper())
 container.register("profile_reader", lambda c: ProfileReader())
-container.register("profile_registry", lambda c: ProfileRegistry(c.resolve("profile_reader")))
 container.register("skin_slot_deriver", lambda c: SkinSlotDeriver())
-container.register("menu_clut_locator", lambda c: MenuClutLocator())
 container.register("animation_decoder", lambda c: AnimationDecoder())
 container.register("ctr_model_reader", lambda c: CtrModelReader(c.resolve("animation_decoder")))
+container.register("profile_loader", lambda c: ProfileLoader(
+    c.resolve("profile_reader"), c.resolve("ctr_model_reader"), c.resolve("skin_slot_deriver"),
+))
 container.register("vertex_assembler", lambda c: VertexAssembler())
 container.register("slot_region_deriver", lambda c: SlotRegionDeriver())
 container.register("vram_reader", lambda c: VramReader())
@@ -90,6 +97,8 @@ container.register("paintjob_reader", lambda c: PaintjobReader())
 container.register("paintjob_writer", lambda c: PaintjobWriter())
 container.register("skin_writer", lambda c: SkinWriter())
 container.register("skin_reader", lambda c: SkinReader())
+container.register("wheel_writer", lambda c: WheelWriter())
+container.register("wheel_reader", lambda c: WheelReader())
 container.register("message_dialog", lambda c: MessageDialog())
 container.register("file_picker", lambda c: FilePicker())
 container.register("input_prompt", lambda c: InputPrompt())
@@ -108,6 +117,9 @@ container.register("texture_exporter", lambda c: TextureExporter(
     c.resolve("color_converter"),
     c.resolve("four_bpp_codec"),
 ))
+container.register("preview_image_writer", lambda c: PreviewImageWriter())
+container.register("wheel_geometry", lambda c: WheelGeometry())
+container.register("wheel_sheet", lambda c: WheelSheet(c.resolve("texture_quantizer"), c.resolve("texture_exporter")))
 container.register("palette_from_image_creator", lambda c: PaletteFromImageCreator(c.resolve("texture_quantizer")))
 container.register("palette_from_colors_creator", lambda c: PaletteFromColorsCreator())
 container.register("character_handler", lambda c: CharacterHandler(
@@ -115,6 +127,7 @@ container.register("character_handler", lambda c: CharacterHandler(
     c.resolve("vram_cache"),
     c.resolve("slot_region_deriver"),
     c.resolve("atlas_renderer"),
+    c.resolve("wheel_geometry"),
 ))
 container.register("color_handler", lambda c: ColorHandler(
     c.resolve("vram_cache"),
@@ -148,6 +161,18 @@ container.register("skin_library_controller", lambda c: SkinLibraryController(
     c.resolve("character_picker"),
     c.resolve("color_handler"),
 ))
+container.register("wheel_library_controller", lambda c: WheelLibraryController(
+    WheelLibrarySidebar(),
+    c.resolve("wheel_reader"),
+    c.resolve("wheel_writer"),
+    c.resolve("library_writer"),
+    c.resolve("wheel_sheet"),
+    c.resolve("message_dialog"),
+    c.resolve("file_picker"),
+    c.resolve("slugifier"),
+    c.resolve("color_handler"),
+    c.resolve("wheel_geometry"),
+))
 container.register("preview_sidebar", lambda c: PreviewSidebar())
 container.register("slot_editor", lambda c: SlotEditor(c.resolve("color_converter")))
 container.register("orphan_slot_editor", lambda c: SlotEditor(c.resolve("color_converter")))
@@ -156,6 +181,7 @@ container.register("kart_viewer", lambda c: KartViewer(
     c.resolve("atlas_uv_mapper"),
     c.resolve("ray_triangle_picker"),
     c.resolve("blend_mode_grouper"),
+    c.resolve("wheel_geometry"),
 ))
 container.register("palette_library_controller", lambda c: PaletteLibraryController(
     PaletteSidebar(c.resolve("color_converter")),
@@ -165,4 +191,5 @@ container.register("palette_library_controller", lambda c: PaletteLibraryControl
     c.resolve("file_picker"),
     c.resolve("palette_from_image_creator"),
     c.resolve("palette_from_colors_creator"),
+    c.resolve("psx_color_picker"),
 ))

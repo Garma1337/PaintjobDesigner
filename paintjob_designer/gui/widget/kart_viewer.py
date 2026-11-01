@@ -5,8 +5,8 @@ from pathlib import Path
 
 import numpy as np
 from OpenGL import GL
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QSurfaceFormat
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
+from PySide6.QtGui import QImage, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from paintjob_designer.models import AssembledMesh, BlendingMode, TextureLayout
@@ -14,44 +14,42 @@ from paintjob_designer.render.atlas_uv_mapper import AtlasUvMapper
 from paintjob_designer.render.blend_mode_grouper import BlendModeGrouper
 from paintjob_designer.render.orbit_camera import OrbitCamera
 from paintjob_designer.render.ray_picker import RayTrianglePicker
+from paintjob_designer.render.wheel_geometry import FrameBounds, WheelGeometry
 
-# Shaders live as standalone `.vert` / `.frag` files under `shaders/` — kept
-# them out of this module so editors can highlight GLSL properly and the
-# code here stays readable. Loaded at import time: the strings never change
-# between runs and file I/O during `initializeGL` was wasted work.
-#
-# No V-flip in the fragment shader: the atlas buffer already stores row 0 at
-# the top, and GL's texture sampler returns that row at `v = 0`.
 _SHADERS_DIR = Path(__file__).parent / "shaders"
 _VERTEX_SHADER = (_SHADERS_DIR / "kart.vert").read_text(encoding="utf-8")
 _FRAGMENT_SHADER = (_SHADERS_DIR / "kart.frag").read_text(encoding="utf-8")
+
+_UNLIT_NORMAL = (np.array([0.35, 0.85, 0.4]) / np.linalg.norm([0.35, 0.85, 0.4])).astype(np.float32)
+_NEUTRAL_VCOLOR = 0.5
 
 
 class KartViewer(QOpenGLWidget):
     """Textured 3D preview of the current kart mesh."""
 
     gl_init_failed = Signal(str)
-    # Emitted on Alt+Click with:
-    #   tex_layout_index  1-based index into the mesh's texture_layouts (0 = an
-    #                     untextured draw, no slot/CLUT to pick from)
-    #   byte_u, byte_v    interpolated byte-space UV (0..255) at the hit point
-    # The main window maps the TextureLayout's CLUT coords to a paintjob slot
-    # and samples the atlas at (u, v) to find the exact color_index.
     eyedropper_picked = Signal(int, float, float)
+    empty_space_context_requested = Signal(QPoint)
 
+    _BACKGROUND_RGB = (0.15, 0.16, 0.18)
     _ZOOM_STEP = 1.15
+    _ROLL_INTERVAL_MS = 33
+    _ROLL_STEP = 0.2
 
     def __init__(
         self,
         uv_mapper: AtlasUvMapper,
         ray_picker: RayTrianglePicker,
         blend_mode_grouper: BlendModeGrouper,
+        wheel_geometry: WheelGeometry,
         parent=None,
     ) -> None:
         fmt = QSurfaceFormat()
         fmt.setVersion(3, 3)
         fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
         fmt.setDepthBufferSize(24)
+        # Transparent image captures need a framebuffer that stores alpha.
+        fmt.setAlphaBufferSize(8)
         fmt.setSamples(4)
 
         super().__init__(parent)
@@ -62,6 +60,7 @@ class KartViewer(QOpenGLWidget):
         self._uv_mapper = uv_mapper
         self._ray_picker = ray_picker
         self._blend_grouper = blend_mode_grouper
+        self._wheel_geometry = wheel_geometry
         self._camera = OrbitCamera()
 
         self._viewport_w = 1
@@ -80,41 +79,42 @@ class KartViewer(QOpenGLWidget):
         self._uniform_mvp = -1
         self._uniform_atlas = -1
         self._uniform_has_focus = -1
+        self._uniform_alpha_from_color = -1
+        self._transparent_background = False
         self._triangle_count = 0
         self._initialized = False
 
-        # Pending uploads. Applied during the next paintGL.
-        # Tuple of (positions, uvs, normals, colors) for the mesh.
         self._pending_mesh: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None
         self._pending_atlas: tuple[bytes, int, int] | None = None
         self._pending_atlas_region: tuple[bytes, int, int, int, int, int, int] | None = None
         self._pending_highlight: np.ndarray | None = None
-        # Per-mode vertex-index arrays to upload as EBOs. The kart viewer
-        # draws one pass per blend mode so PSX semi-transparency renders
-        # via the right `glBlendFunc`/`glBlendEquation` per group.
         self._pending_blend_indices: dict[BlendingMode, np.ndarray] | None = None
         self._ebos: dict[BlendingMode, int] = {}
         self._index_counts: dict[BlendingMode, int] = {}
 
-        # UVs and per-vertex Gouraud colors from the last `set_mesh` call, kept
-        # around so `set_frame_positions` can build new pending meshes even after
-        # `paintGL` has consumed the previous one (it clears `_pending_mesh` on
-        # upload). Both are mesh-intrinsic: animation frames only move vertices,
-        # so these stay the same across the whole clip.
         self._base_uvs: np.ndarray | None = None
         self._base_colors: np.ndarray | None = None
 
-        # Most-recent world-space positions + byte-space UVs for ray-picking
-        # (eyedropper). Updated on every `set_mesh` / `set_frame_positions`
-        # so picking uses the same geometry the user is looking at.
         self._pick_positions: np.ndarray | None = None
         self._pick_uvs: np.ndarray | None = None
         self._pick_texture_layout_indices: list[int] | None = None
 
-        # Whether any slot is currently focused. The fragment shader reads this
-        # as `u_has_focus`; when 0, all triangles render normally regardless of
-        # the per-vertex highlight attribute.
         self._has_focus = False
+
+        self._wheel_centers: np.ndarray | None = None
+        self._wheel_half_size = 0.0
+        self._wheel_frame_uvs: list[tuple[float, float, float, float]] = []
+        self._wheel_side = FrameBounds()
+        self._wheel_tread = FrameBounds()
+        self._wheel_roll = 0.0
+        self._wheels_dirty = True
+        self._wheel_vertex_count = 0
+        self._wheel_vao = 0
+        self._wheel_vbos: list[int] = []
+        self._wheels_rolling = False
+        self._roll_timer = QTimer(self)
+        self._roll_timer.setInterval(self._ROLL_INTERVAL_MS)
+        self._roll_timer.timeout.connect(self._on_roll_tick)
 
     def clear(self) -> None:
         """Drop the current mesh + atlas so the viewer renders empty.
@@ -137,6 +137,47 @@ class KartViewer(QOpenGLWidget):
         self._pick_texture_layout_indices = None
         self._pending_highlight = np.zeros((0,), dtype=np.float32)
         self._has_focus = False
+        self._wheel_centers = None
+        self._wheels_dirty = True
+        self._sync_roll_timer()
+        self.update()
+
+    def set_wheels(
+        self,
+        centers: np.ndarray | None,
+        half_size: float = 0.0,
+        frame_uvs: list[tuple[float, float, float, float]] | None = None,
+        side: FrameBounds | None = None,
+        tread: FrameBounds | None = None,
+    ) -> None:
+        """Show (or hide, with `centers=None`) the four wheels.
+
+        `frame_uvs` holds each frame's atlas rect; `side` / `tread` are the
+        opaque texels of the side and tread frames, which size the cylinder.
+        """
+        self._wheel_centers = centers
+        self._wheel_half_size = half_size
+        self._wheel_frame_uvs = list(frame_uvs or [])
+        self._wheel_side = side or FrameBounds()
+        self._wheel_tread = tread or FrameBounds()
+        self._wheels_dirty = True
+        self._sync_roll_timer()
+        self.update()
+
+    def set_wheels_rolling(self, rolling: bool) -> None:
+        self._wheels_rolling = rolling
+        self._sync_roll_timer()
+
+    def _sync_roll_timer(self) -> None:
+        """Only tick while wheels are on screen; otherwise it just repaints for nothing."""
+        if self._wheels_rolling and self._wheel_centers is not None:
+            self._roll_timer.start()
+        else:
+            self._roll_timer.stop()
+
+    def _on_roll_tick(self) -> None:
+        self._wheel_roll = (self._wheel_roll + self._ROLL_STEP) % (2.0 * np.pi)
+        self._wheels_dirty = True
         self.update()
 
     def set_mesh(
@@ -189,7 +230,7 @@ class KartViewer(QOpenGLWidget):
 
             # Group triangles by blend mode so paintGL can issue one draw
             # call per mode with the right GL blend state. Fall back to
-            # all-Standard for legacy meshes that don't carry blend_modes.
+            # all-Standard if the assembly has no blend_modes.
             blend_modes = list(assembled.blend_modes) or [
                 BlendingMode.Standard
             ] * assembled.triangle_count
@@ -269,6 +310,14 @@ class KartViewer(QOpenGLWidget):
         if self._texture == 0:
             return
 
+        # Several slots can change before the next paint (Reset all, macro
+        # undo); grow the pending rect so none of them is dropped.
+        if self._pending_atlas_region is not None:
+            _, _, _, px, py, pw, ph = self._pending_atlas_region
+            left, top = min(x, px), min(y, py)
+            right, bottom = max(x + w, px + pw), max(y + h, py + ph)
+            x, y, w, h = left, top, right - left, bottom - top
+
         self._pending_atlas_region = (bytes(rgba), atlas_width, atlas_height, x, y, w, h)
         self.update()
 
@@ -306,13 +355,49 @@ class KartViewer(QOpenGLWidget):
         self._camera.reset()
         self.update()
 
+    def background_rgb(self) -> tuple[int, int, int]:
+        """The viewer's on-screen background as 8-bit RGB."""
+        r, g, b = self._BACKGROUND_RGB
+        return round(r * 255), round(g * 255), round(b * 255)
+
+    def capture_rgba(self) -> tuple[bytes, int, int] | None:
+        """Render the current view offscreen and return (rgba, width, height).
+
+        The background is transparent (straight, non-premultiplied alpha).
+        Slot-focus dimming is an editing aid, not part of the paintjob, so
+        it's suppressed for the capture. Returns None when nothing is loaded.
+        """
+        if not self._initialized or self._triangle_count == 0:
+            return None
+
+        has_focus = self._has_focus
+        self._has_focus = False
+        self._transparent_background = True
+
+        try:
+            image = self.grabFramebuffer()
+        finally:
+            self._has_focus = has_focus
+            self._transparent_background = False
+            self.update()
+
+        image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+        width, height = image.width(), image.height()
+        row_bytes = width * 4
+        stride = image.bytesPerLine()
+        raw = bytes(image.constBits())[:stride * height]
+        rgba = b"".join(
+            raw[y * stride:y * stride + row_bytes] for y in range(height)
+        )
+
+        return rgba, width, height
+
     def initializeGL(self) -> None:
         # Wrap the whole bring-up in a try/except: shader compile/link can
         # fail on older drivers, and `glGenBuffers` etc. raise if the context
         # didn't come up at the 3.3 core profile we asked for. Tell the host
         # window so it can swap us for a placeholder.
         try:
-            GL.glClearColor(0.15, 0.16, 0.18, 1.0)
             GL.glEnable(GL.GL_DEPTH_TEST)
             # Backface culling stays off: PSX faces are commonly double-sided and
             # the assembler's winding varies with flip_normal + batch-reverse, so
@@ -323,6 +408,7 @@ class KartViewer(QOpenGLWidget):
             self._uniform_mvp = GL.glGetUniformLocation(self._program, "u_mvp")
             self._uniform_atlas = GL.glGetUniformLocation(self._program, "u_atlas")
             self._uniform_has_focus = GL.glGetUniformLocation(self._program, "u_has_focus")
+            self._uniform_alpha_from_color = GL.glGetUniformLocation(self._program, "u_alpha_from_color")
 
             self._vao = GL.glGenVertexArrays(1)
             self._vbo_pos = GL.glGenBuffers(1)
@@ -331,8 +417,11 @@ class KartViewer(QOpenGLWidget):
             self._vbo_highlight = GL.glGenBuffers(1)
             self._vbo_color = GL.glGenBuffers(1)
             self._texture = GL.glGenTextures(1)
+            self._wheel_vao = GL.glGenVertexArrays(1)
+            self._wheel_vbos = [GL.glGenBuffers(1) for _ in range(5)]
 
             self._configure_vao()
+            self._configure_wheel_vao()
             self._configure_texture_defaults()
 
             self._initialized = True
@@ -377,6 +466,12 @@ class KartViewer(QOpenGLWidget):
             self._upload_atlas_region(*self._pending_atlas_region)
             self._pending_atlas_region = None
 
+        if self._transparent_background:
+            # Premultiplied-alpha capture: clear to fully transparent black.
+            GL.glClearColor(0.0, 0.0, 0.0, 0.0)
+        else:
+            GL.glClearColor(*self._BACKGROUND_RGB, 1.0)
+
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
 
         if self._triangle_count == 0:
@@ -388,6 +483,7 @@ class KartViewer(QOpenGLWidget):
         mvp = self._camera.projection_matrix(aspect) @ self._camera.view_matrix()
         GL.glUniformMatrix4fv(self._uniform_mvp, 1, GL.GL_TRUE, mvp.astype(np.float32))
         GL.glUniform1i(self._uniform_has_focus, 1 if self._has_focus else 0)
+        GL.glUniform1i(self._uniform_alpha_from_color, 0)
 
         GL.glActiveTexture(GL.GL_TEXTURE0)
         GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture)
@@ -398,6 +494,51 @@ class KartViewer(QOpenGLWidget):
         GL.glBindVertexArray(0)
         GL.glUseProgram(0)
 
+    def _draw_wheels(self) -> None:
+        if self._wheels_dirty:
+            self._wheels_dirty = False
+            positions, uvs = self._build_wheels()
+            self._wheel_vertex_count = len(positions)
+            normals = np.tile(_UNLIT_NORMAL, (len(positions), 1))
+            highlight = np.ones(len(positions), dtype=np.float32)
+            colors = np.full((len(positions), 3), _NEUTRAL_VCOLOR, dtype=np.float32)
+
+            for vbo, data in zip(self._wheel_vbos, (positions, uvs, normals, highlight, colors)):
+                GL.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo)
+                GL.glBufferData(GL.GL_ARRAY_BUFFER, data.nbytes, data, GL.GL_DYNAMIC_DRAW)
+
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+
+        if self._wheel_vertex_count == 0:
+            return
+
+        GL.glDisable(GL.GL_BLEND)
+        GL.glDepthMask(GL.GL_TRUE)
+        GL.glBindVertexArray(self._wheel_vao)
+        GL.glDrawArrays(GL.GL_TRIANGLES, 0, self._wheel_vertex_count)
+
+    def _build_wheels(self) -> tuple[np.ndarray, np.ndarray]:
+        positions: list[np.ndarray] = []
+        uvs: list[tuple[float, float]] = []
+        if self._wheel_centers is not None and self._wheel_frame_uvs:
+            for center in self._wheel_centers:
+                quads = self._wheel_geometry.wheel_cylinder(
+                    np.asarray(center, dtype=np.float64), self._wheel_half_size,
+                    self._wheel_side, self._wheel_tread, self._wheel_roll,
+                )
+
+                for quad in quads:
+                    u0, v0, u1, v1 = self._wheel_frame_uvs[quad.frame]
+                    corner_uvs = [(u0 + s * (u1 - u0), v0 + t * (v1 - v0)) for s, t in quad.uvs]
+                    tl, tr, br, bl = quad.corners
+                    positions.extend((tl, tr, br, tl, br, bl))
+                    uvs.extend((corner_uvs[0], corner_uvs[1], corner_uvs[2], corner_uvs[0], corner_uvs[2], corner_uvs[3]))
+
+        return (
+            np.asarray(positions, dtype=np.float32).reshape(-1, 3),
+            np.asarray(uvs, dtype=np.float32).reshape(-1, 2),
+        )
+
     def _draw_blend_passes(self) -> None:
         """One draw call per PSX blend mode. Opaque first (depth-write on),
         then translucent passes with depth-test only so they layer over the
@@ -407,6 +548,11 @@ class KartViewer(QOpenGLWidget):
         GL.glDisable(GL.GL_BLEND)
         GL.glDepthMask(GL.GL_TRUE)
         self._draw_blend_pass(BlendingMode.Standard)
+
+        # The tires are opaque, so they go in before the translucent passes;
+        # those write no depth and would otherwise be overdrawn by the tires.
+        self._draw_wheels()
+        GL.glBindVertexArray(self._vao)
 
         if not any(
             mode in self._ebos
@@ -424,12 +570,18 @@ class KartViewer(QOpenGLWidget):
         GL.glBlendFunc(GL.GL_CONSTANT_ALPHA, GL.GL_ONE_MINUS_CONSTANT_ALPHA)
         self._draw_blend_pass(BlendingMode.Translucent)
 
-        # Pass 3: additive — final = back + front.
+        # Pass 3: additive — final = back + front. The shader writes the
+        # glow's brightest channel as alpha so it stays visible (and valid
+        # premultiplied) over a transparent capture background.
         GL.glBlendFunc(GL.GL_ONE, GL.GL_ONE)
+        GL.glUniform1i(self._uniform_alpha_from_color, 1)
         self._draw_blend_pass(BlendingMode.Additive)
+        GL.glUniform1i(self._uniform_alpha_from_color, 0)
 
-        # Pass 4: subtractive — final = back − front.
+        # Pass 4: subtractive — final = back − front. Alpha is left untouched;
+        # subtracting it would punch see-through holes into the capture.
         GL.glBlendEquation(GL.GL_FUNC_REVERSE_SUBTRACT)
+        GL.glBlendFuncSeparate(GL.GL_ONE, GL.GL_ONE, GL.GL_ZERO, GL.GL_ONE)
         self._draw_blend_pass(BlendingMode.Subtractive)
 
         # Restore defaults so other GL users (or the next paintGL) start clean.
@@ -452,9 +604,13 @@ class KartViewer(QOpenGLWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             self._last_mouse_pos = event.position()
         elif event.button() == Qt.MouseButton.RightButton:
-            # Right-click = eyedropper pick. Left-drag stays dedicated to
-            # orbit, so artists can rotate and pick without switching tools.
-            self._handle_eyedropper_pick(event)
+            hit = self._pick_triangle(event.position())
+            if hit is None:
+                self.empty_space_context_requested.emit(
+                    event.globalPosition().toPoint(),
+                )
+            else:
+                self._handle_eyedropper_pick(hit)
 
     def mouseMoveEvent(self, event) -> None:
         if self._last_mouse_pos is None:
@@ -475,17 +631,16 @@ class KartViewer(QOpenGLWidget):
         if self._camera.zoom(factor):
             self.update()
 
-    def _handle_eyedropper_pick(self, event) -> None:
-        """Ray-pick the triangle under the cursor and emit `eyedropper_picked`."""
+    def _pick_triangle(self, pos):
+        """Ray-pick the kart triangle under `pos`, or None for empty space."""
         if (
             self._pick_positions is None
             or self._pick_uvs is None
             or self._pick_texture_layout_indices is None
         ):
-            return
+            return None
 
-        pos = event.position()
-        hit = self._ray_picker.pick(
+        return self._ray_picker.pick(
             self._pick_positions,
             self._camera,
             pos.x(),
@@ -494,9 +649,8 @@ class KartViewer(QOpenGLWidget):
             self._viewport_h,
         )
 
-        if hit is None:
-            return
-
+    def _handle_eyedropper_pick(self, hit) -> None:
+        """Emit `eyedropper_picked` for the CLUT texel under a picked triangle."""
         base = hit.triangle_index * 3
         if base + 2 >= len(self._pick_uvs):
             return
@@ -566,6 +720,16 @@ class KartViewer(QOpenGLWidget):
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self._vbo_color)
         GL.glVertexAttribPointer(4, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, ctypes.c_void_p(0))
         GL.glEnableVertexAttribArray(4)
+
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+        GL.glBindVertexArray(0)
+
+    def _configure_wheel_vao(self) -> None:
+        GL.glBindVertexArray(self._wheel_vao)
+        for location, (vbo, size) in enumerate(zip(self._wheel_vbos, (3, 2, 3, 1, 3))):
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo)
+            GL.glVertexAttribPointer(location, size, GL.GL_FLOAT, GL.GL_FALSE, 0, ctypes.c_void_p(0))
+            GL.glEnableVertexAttribArray(location)
 
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
         GL.glBindVertexArray(0)

@@ -49,14 +49,14 @@ Each `.json` is a single `Skin`:
 
 ### Top-level fields
 
-| Field              | Type     | Meaning                                                                                                                                                                          |
-|--------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `schema_version`   | int      | Always `1` currently. Consumers should reject newer versions they don't understand.                                                                                              |
-| `name`             | string   | Artist-supplied display name. May be empty.                                                                                                                                      |
-| `author`           | string   | Artist-supplied author tag. May be empty.                                                                                                                                        |
-| `character_id`     | string   | **Required.** The character this skin is bound to. Skin slot names key into that character's specific VRAM rects, so reusing a skin on a different character would miss/corrupt. |
-| `slots`            | object   | Map of skin-slot name → slot payload. Same shape as paintjob slots (16 PSX colors + optional 4bpp pixels). Slot names come from the active profile's `skin_slots` list.          |
-| `vertex_overrides` | object   | Map of gouraud-table index (string-encoded int) → RGB triple. Skin-only feature. Empty if the skin doesn't override any vertex colors.                                           |
+| Field              | Type   | Meaning                                                                                                                                                                          |
+|--------------------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `schema_version`   | int    | Always `1` currently. Consumers should reject newer versions they don't understand.                                                                                              |
+| `name`             | string | Artist-supplied display name. May be empty.                                                                                                                                      |
+| `author`           | string | Artist-supplied author tag. May be empty.                                                                                                                                        |
+| `character_id`     | string | **Required.** The character this skin is bound to. Skin slot names key into that character's specific VRAM rects, so reusing a skin on a different character would miss/corrupt. |
+| `slots`            | object | Map of skin-slot name → slot payload. Same shape as paintjob slots (16 PSX colors + optional 4bpp pixels). Slot names are the character's derived skin slots (see below).        |
+| `vertex_overrides` | object | Map of gouraud-table index (string-encoded int) → RGB triple. Skin-only feature. Empty if the skin doesn't override any vertex colors.                                           |
 
 Skins are **character-bound and not portable**. The designer enforces this by:
 
@@ -64,7 +64,7 @@ Skins are **character-bound and not portable**. The designer enforces this by:
 - Only seeding the character's `skin_slots` (never `kart_slots`) into a fresh skin.
 - Locking the preview character combo to the bound character whenever a skin is selected.
 
-If a saved skin's `character_id` doesn't exist in the active profile, the designer keeps the file in the library but won't render it. Consumers targeting a different mod should check `character_id` against their roster before applying.
+If a saved skin's `character_id` doesn't exist in the profile, the designer keeps the file in the library but won't render it. Consumers targeting a different mod should check `character_id` against their roster before applying.
 
 ### Slot payload
 
@@ -93,6 +93,6 @@ Vertex override colors use plain 8-bit RGB (`r`, `g`, `b` ∈ 0–255) because g
 
 ## Canonical slot names
 
-Skin slot names are profile-specific and character-specific. The bundled profiles auto-derive them from each character's mesh and emit them as `extra_<vram_x>_<vram_y>` placeholders (e.g. `extra_112_253` is a CLUT at VRAM (112, 253)). The standard-racer kart and skin slot lists are stored in `config/profiles/vanilla-ntsc-u.json` under each character's `kart_slots` and `skin_slots`. The `extra_<x>_<y>` naming is what `tools/populate_skin_slots.py` emits; profiles can also carry semantic skin-slot names (e.g. Oxide's `head`, `eyes`) that override the auto-derived ones.
+Skin slot names are character-specific. The designer derives them from each character's mesh when the ISO loads: every CLUT the mesh samples that isn't one of the character's kart slots (`config/profile.json`) becomes a skin slot named `extra_<vram_x>_<vram_y>` (e.g. `extra_112_253` is a CLUT at VRAM (112, 253)). This applies to Oxide too.
 
-Consumer tools should treat the slot-name set as authoritative per-profile and per-character; don't hard-code names that aren't in the canonical kart-slot list.
+Consumer tools should treat the slot-name set as authoritative per character; don't hard-code names that aren't in the canonical kart-slot list.

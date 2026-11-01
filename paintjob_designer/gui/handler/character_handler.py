@@ -8,10 +8,12 @@ from paintjob_designer.models import (
     CharacterProfile,
     CharacterSlotRegions,
     CtrMesh,
+    KartType,
     Paintjob,
 )
 from paintjob_designer.render.atlas_renderer import AtlasRenderer
 from paintjob_designer.render.slot_region_deriver import SlotRegionDeriver
+from paintjob_designer.render.wheel_geometry import WheelGeometry
 from paintjob_designer.vram.cache import VramCache
 
 
@@ -33,11 +35,13 @@ class CharacterHandler:
         vram_cache: VramCache,
         slot_region_deriver: SlotRegionDeriver,
         atlas_renderer: AtlasRenderer,
+        wheel_geometry: WheelGeometry,
     ) -> None:
         self._ctr_reader = ctr_model_reader
         self._vram_cache = vram_cache
         self._deriver = slot_region_deriver
         self._atlas = atlas_renderer
+        self._wheel_geometry = wheel_geometry
 
     def load_character(
         self,
@@ -53,6 +57,9 @@ class CharacterHandler:
         mesh = model.meshes[0]
 
         regions = self._deriver.derive(mesh, character)
+        if character.kart_type == KartType.KART:
+            regions.slots.update(self._wheel_geometry.wheel_slot_regions())
+
         atlas = self._atlas.render_atlas(vram, paintjob, regions)
 
         return BroughtUpCharacter(

@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QLabel,
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from paintjob_designer.color.converter import ColorConverter
 from paintjob_designer.color.transform import ColorTransformer
+from paintjob_designer.gui.widget.color_picker import PsxColorPicker
 from paintjob_designer.gui.widget.transform_panel import (
     _MODE_LABELS,
     _PIPELINE,
@@ -34,6 +36,7 @@ class VertexTransformDialog(QDialog):
         self,
         color_transformer: ColorTransformer,
         color_converter: ColorConverter,
+        color_picker: PsxColorPicker,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -44,10 +47,8 @@ class VertexTransformDialog(QDialog):
         self._transformer = color_transformer
         self._converter = color_converter
         self._colors: list[Rgb888] = []
-        # When set, the pipeline only rewrites these indices — used to skip
-        # vertex colors shared with textured triangles, since the shader's
-        # `texture * vcolor * 2` modulation would tint the paintjob.
-        self._transformable_indices: set[int] | None = None
+        self._skin_indices: set[int] = set()
+        self._shared_indices: set[int] = set()
 
         layout = QVBoxLayout(self)
 
@@ -56,12 +57,23 @@ class VertexTransformDialog(QDialog):
         self._intro.setStyleSheet("color: #aaa;")
         layout.addWidget(self._intro)
 
+        self._include_kart = QCheckBox("Include colors shared with the kart")
+        self._include_kart.setChecked(False)
+        self._include_kart.setToolTip(
+            "The kart and the character share one vertex color table. Some colors "
+            "are used by both; kart faces are drawn as texture × vertex color, so "
+            "changing them also tints the kart in-game.",
+        )
+        self._include_kart.toggled.connect(self._on_scope_changed)
+        layout.addWidget(self._include_kart)
+
         self._sections: dict[object, _OperationSection] = {}
         for mode in _PIPELINE:
             section = _OperationSection(
                 mode=mode,
                 label=_MODE_LABELS[mode],
                 color_converter=self._converter,
+                color_picker=color_picker,
             )
 
             section.params_changed.connect(self._on_params_changed)
@@ -88,34 +100,38 @@ class VertexTransformDialog(QDialog):
     def set_colors(
         self,
         colors: list[Rgb888],
-        transformable_indices: set[int] | None = None,
+        skin_indices: set[int] | None = None,
+        shared_indices: set[int] | None = None,
     ) -> None:
         """Push a fresh baseline. Call on open and after each commit so the
         next preview starts from the freshly-baked state.
         """
         self._colors = list(colors)
-        self._transformable_indices = (
-            set(transformable_indices)
-            if transformable_indices is not None else None
-        )
+        self._skin_indices = set(range(len(colors))) if skin_indices is None else set(skin_indices)
+        self._shared_indices = set(shared_indices or ())
+        self._refresh_intro()
+        self._refresh_summary()
 
-        if self._transformable_indices is None:
-            scope_hint = (
-                f"{len(self._colors)} colors will be considered."
-            )
-        else:
-            scope_hint = (
-                f"{len(self._transformable_indices)} of {len(self._colors)} "
-                "colors will be considered (the rest are tied to textured "
-                "surfaces and would tint the paintjob if changed)."
-            )
+    def _considered_count(self) -> int:
+        return len(self._transformable_indices())
 
+    def _transformable_indices(self) -> set[int]:
+        if self._include_kart.isChecked():
+            return self._skin_indices
+
+        return self._skin_indices - self._shared_indices
+
+    def _refresh_intro(self) -> None:
         self._intro.setText(
             "Apply one or more transforms to the gouraud vertex colors "
-            f"in this character's mesh. {scope_hint} Enable a section to "
-            "add it to the pipeline.",
+            f"in this character's mesh. {self._considered_count()} of "
+            f"{len(self._skin_indices)} colors will be considered. Enable a "
+            "section to add it to the pipeline.",
         )
-        self._refresh_summary()
+
+    def _on_scope_changed(self) -> None:
+        self._refresh_intro()
+        self._on_params_changed()
 
     def commit_finished(self) -> None:
         """Reset sliders so the next Apply doesn't double-apply on top of
@@ -147,11 +163,9 @@ class VertexTransformDialog(QDialog):
             return {}
 
         overrides: dict[int, Rgb888] = {}
+        transformable = self._transformable_indices()
         for index, color in enumerate(self._colors):
-            if (
-                self._transformable_indices is not None
-                and index not in self._transformable_indices
-            ):
+            if index not in transformable:
                 continue
 
             psx = self._converter.rgb_to_psx(color)

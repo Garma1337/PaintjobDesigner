@@ -15,7 +15,6 @@ class IsoRootValidator:
     """Determines whether a directory looks like an extracted CTR (NTSC-U) ISO."""
 
     _REQUIRED_FILES = (
-        "bigfile/models/racers/hi/crash.ctr",
         "bigfile/packs/shared.vrm",
     )
 

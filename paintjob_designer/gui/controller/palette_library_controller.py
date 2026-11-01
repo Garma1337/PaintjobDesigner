@@ -10,6 +10,7 @@ from paintjob_designer.color.converter import ColorConverter
 from paintjob_designer.gui.controller.library_controller import LibraryController
 from paintjob_designer.gui.dialog.palette_edit_dialog import PaletteEditDialog
 from paintjob_designer.gui.util.dialogs import FilePicker, InputPrompt, MessageDialog
+from paintjob_designer.gui.widget.color_picker import PsxColorPicker
 from paintjob_designer.gui.widget.palette_sidebar import PaletteSidebar
 from paintjob_designer.models import Palette, PaletteLibrary, PsxColor
 from paintjob_designer.palette.palette_from_colors_creator import PaletteFromColorsCreator
@@ -17,8 +18,6 @@ from paintjob_designer.palette.palette_from_image_creator import PaletteFromImag
 
 
 class PaletteLibraryController(LibraryController[Palette, PaletteLibrary]):
-    """Owns the palette library + sidebar."""
-
     save_from_slot_requested = Signal()
 
     def __init__(
@@ -30,11 +29,13 @@ class PaletteLibraryController(LibraryController[Palette, PaletteLibrary]):
         files: FilePicker,
         palette_from_image_creator: PaletteFromImageCreator,
         palette_from_colors_creator: PaletteFromColorsCreator,
+        color_picker: PsxColorPicker,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(message, parent)
         self._sidebar = sidebar
         self._converter = color_converter
+        self._picker = color_picker
         self._prompt = prompt
         self._files = files
         self._palette_from_image = palette_from_image_creator
@@ -131,7 +132,7 @@ class PaletteLibraryController(LibraryController[Palette, PaletteLibrary]):
         """Open the edit dialog for `seed`. On accept, append (replace_index
         is None) or replace at the given index."""
         dialog = PaletteEditDialog(
-            seed, self._converter, parent=self._parent_widget,
+            seed, self._converter, self._picker, parent=self._parent_widget,
         )
 
         if dialog.exec() != PaletteEditDialog.DialogCode.Accepted:

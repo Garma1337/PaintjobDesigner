@@ -21,18 +21,11 @@ class CommonKey:
 
 
 class ProfileKey:
-    VRAM_PAGE = "vram_page"
-    WIDTH = "width"
-    HEIGHT = "height"
     CHARACTERS = "characters"
-    PAINTJOB_SLOTS = "paintjob_slots"
-    DEFAULT_CHARACTER_ID = "default_character_id"
     MESH_SOURCE = "mesh_source"
     KART_TYPE = "kart_type"
     KART_SLOTS = "kart_slots"
-    SKIN_SLOTS = "skin_slots"
-    CLUT_RACE = "clut_race"
-    CLUT_MENU = "clut_menu"
+    CLUT = "clut"
     CLUT_X = "x"
     CLUT_Y = "y"
     NON_PORTABLE = "non_portable"
@@ -49,3 +42,8 @@ class SkinKey:
     COLORS = "colors"
     CHARACTER_ID = "character_id"
     VERTEX_OVERRIDES = "vertex_overrides"
+
+
+class WheelKey:
+    SLOTS = "slots"
+    COLORS = "colors"

@@ -25,6 +25,7 @@ from paintjob_designer.color.transform import (
 )
 from paintjob_designer.constants import PSX_TRANSPARENT_VALUE, RGB_COMPONENT_MAX
 from paintjob_designer.gui.command.bulk_transform_command import BulkColorEdit
+from paintjob_designer.gui.widget.color_picker import PsxColorPicker
 from paintjob_designer.gui.widget.psx_color_button import PsxColorButton
 from paintjob_designer.models import Paintjob, PsxColor, SlotRegions
 
@@ -33,7 +34,7 @@ from paintjob_designer.models import Paintjob, PsxColor, SlotRegions
 class TransformCandidate:
     """One color the panel is allowed to rewrite, plus the asset that owns it."""
 
-    asset: object  # Paintjob or Skin — the panel just passes it through
+    asset: object  # Paintjob, Skin or Wheel — the panel just passes it through
     slot: SlotRegions
     color_index: int
     current_color: PsxColor
@@ -43,14 +44,9 @@ class TransformScope(Enum):
     THIS_SLOT = "this_slot"
     KART_SLOTS = "kart_slots"
     SKIN_SLOTS = "skin_slots"
+    WHEEL_FRAMES = "wheel_frames"
 
 
-# Pipeline order for composition. Selective ops (replace-matches,
-# replace-hue) run before the bulk ops so their output is what the bulk
-# rotations see — e.g. replace-hue swaps a green band to red, then a
-# later "shift hue" rotates the whole palette with the swap already
-# baked in. Order is fixed so artists get predictable results — no
-# per-op reordering UI.
 _PIPELINE: tuple[TransformMode, ...] = (
     TransformMode.REPLACE_MATCHES,
     TransformMode.REPLACE_HUE,
@@ -75,24 +71,15 @@ _MODE_LABELS: dict[TransformMode, str] = {
 class TransformColorsPanel(QDialog):
     """Modeless panel for stacking multiple bulk-color transforms."""
 
-    # Pushed on every slider tick (live preview). Main window uses the
-    # same snapshot / restore machinery as the old dialog to show the
-    # in-flight transform without committing.
     preview_changed = Signal(list)
-
-    # Emitted when the user clicks Apply with at least one enabled op.
-    # Main window applies + pushes a BulkTransformCommand, then calls
-    # `commit_finished` back on the panel so sliders reset.
     commit_requested = Signal(list)
-
-    # Emitted when the panel is about to close (X / Close button). Main
-    # window reverts any pending preview state and drops its snapshot.
     closing = Signal()
 
     def __init__(
         self,
         color_transformer: ColorTransformer,
         color_converter: ColorConverter,
+        color_picker: PsxColorPicker,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -102,23 +89,22 @@ class TransformColorsPanel(QDialog):
 
         self._transformer = color_transformer
         self._converter = color_converter
+        self._picker = color_picker
 
         self._slot_candidates: list[TransformCandidate] = []
         self._kart_slot_candidates: list[TransformCandidate] = []
         self._skin_slot_candidates: list[TransformCandidate] = []
+        self._wheel_frame_candidates: list[TransformCandidate] = []
         self._slot_label: str = ""
 
         layout = QVBoxLayout(self)
 
-        # Three scopes: the one currently-focused slot, every CLUT the
-        # paintjob layer can edit (kart_slots), or every CLUT the skin
-        # layer can edit (skin_slots). The host pushes one candidate
-        # list per scope via `set_candidates`.
         scope_row = QFormLayout()
         self._scope_combo = QComboBox()
         self._scope_combo.addItem("Current slot", TransformScope.THIS_SLOT)
         self._scope_combo.addItem("All kart slots", TransformScope.KART_SLOTS)
         self._scope_combo.addItem("All skin slots", TransformScope.SKIN_SLOTS)
+        self._scope_combo.addItem("All wheel frames", TransformScope.WHEEL_FRAMES)
         self._scope_combo.setCurrentIndex(1)
         self._scope_combo.currentIndexChanged.connect(self._on_preview_changed)
         scope_row.addRow("Scope:", self._scope_combo)
@@ -130,6 +116,7 @@ class TransformColorsPanel(QDialog):
                 mode=mode,
                 label=_MODE_LABELS[mode],
                 color_converter=self._converter,
+                color_picker=self._picker,
             )
 
             section.params_changed.connect(self._on_preview_changed)
@@ -158,6 +145,7 @@ class TransformColorsPanel(QDialog):
         slot_candidates: list[TransformCandidate],
         kart_slot_candidates: list[TransformCandidate],
         skin_slot_candidates: list[TransformCandidate],
+        wheel_frame_candidates: list[TransformCandidate] | None = None,
         slot_label: str = "",
     ) -> None:
         """Push fresh candidate lists for each scope.
@@ -168,6 +156,7 @@ class TransformColorsPanel(QDialog):
         self._slot_candidates = slot_candidates
         self._kart_slot_candidates = kart_slot_candidates
         self._skin_slot_candidates = skin_slot_candidates
+        self._wheel_frame_candidates = wheel_frame_candidates or []
         self._slot_label = slot_label
 
         self._refresh_scope_options()
@@ -176,7 +165,6 @@ class TransformColorsPanel(QDialog):
         self._on_preview_changed()
 
     def select_slot_scope(self) -> None:
-        """Force the scope combo to 'Current slot'."""
         if self._slot_candidates:
             self._scope_combo.setCurrentIndex(0)
 
@@ -220,6 +208,7 @@ class TransformColorsPanel(QDialog):
             0: bool(self._slot_candidates),
             1: bool(self._kart_slot_candidates),
             2: bool(self._skin_slot_candidates),
+            3: bool(self._wheel_frame_candidates),
         }
         for row, enabled in availability.items():
             self._scope_combo.model().item(row).setEnabled(enabled)
@@ -243,6 +232,9 @@ class TransformColorsPanel(QDialog):
 
         if scope == TransformScope.SKIN_SLOTS:
             return self._skin_slot_candidates
+
+        if scope == TransformScope.WHEEL_FRAMES:
+            return self._wheel_frame_candidates
 
         return self._kart_slot_candidates
 
@@ -304,10 +296,12 @@ class _OperationSection(QGroupBox):
         mode: TransformMode,
         label: str,
         color_converter: ColorConverter,
+        color_picker: PsxColorPicker,
     ) -> None:
         super().__init__(label)
         self._mode = mode
         self._converter = color_converter
+        self._picker = color_picker
         self.setCheckable(True)
         self.setChecked(False)
         self.toggled.connect(self.params_changed)
@@ -396,11 +390,11 @@ class _OperationSection(QGroupBox):
         self._replace_match = PsxColor(value=PSX_TRANSPARENT_VALUE)
         self._replace_target = PsxColor(value=PSX_TRANSPARENT_VALUE)
 
-        self._match_button = PsxColorButton(self._converter, self._replace_match)
+        self._match_button = PsxColorButton(self._converter, self._picker, self._replace_match)
         self._match_button.color_picked.connect(self._on_match_picked)
         layout.addRow("Match:", self._match_button)
 
-        self._target_button = PsxColorButton(self._converter, self._replace_target)
+        self._target_button = PsxColorButton(self._converter, self._picker, self._replace_target)
         self._target_button.color_picked.connect(self._on_target_picked)
         layout.addRow("Replace with:", self._target_button)
 
@@ -424,11 +418,11 @@ class _OperationSection(QGroupBox):
         self._hue_source = PsxColor(value=PSX_TRANSPARENT_VALUE)
         self._hue_target = PsxColor(value=PSX_TRANSPARENT_VALUE)
 
-        self._hue_source_button = PsxColorButton(self._converter, self._hue_source)
+        self._hue_source_button = PsxColorButton(self._converter, self._picker, self._hue_source)
         self._hue_source_button.color_picked.connect(self._on_hue_source_picked)
         layout.addRow("From hue:", self._hue_source_button)
 
-        self._hue_target_button = PsxColorButton(self._converter, self._hue_target)
+        self._hue_target_button = PsxColorButton(self._converter, self._picker, self._hue_target)
         self._hue_target_button.color_picked.connect(self._on_hue_target_picked)
         layout.addRow("To hue:", self._hue_target_button)
 

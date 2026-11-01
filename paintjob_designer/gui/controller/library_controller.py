@@ -12,11 +12,13 @@ TLibrary = TypeVar("TLibrary")
 
 
 class LibraryController(QObject, Generic[TItem, TLibrary]):
-    """Base for the paintjob / skin / palette controllers."""
+    """Base for the paintjob / skin / wheel / palette controllers."""
 
     selection_changed = Signal(object)
     library_changed = Signal()
     mutated = Signal()
+    # Assets were imported or replaced wholesale. Undo commands hold refs to
+    # the old SlotColors, so the undo history can't span this.
     library_reset = Signal()
 
     def __init__(

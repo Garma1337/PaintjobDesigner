@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from paintjob_designer.color.converter import ColorConverter
 from paintjob_designer.constants import CLUT_PALETTE_SIZE
+from paintjob_designer.gui.widget.color_picker import PsxColorPicker
 from paintjob_designer.gui.widget.psx_color_button import PsxColorButton
 from paintjob_designer.models import Palette, PsxColor
 
@@ -29,11 +30,13 @@ class PaletteEditDialog(QDialog):
         self,
         palette: Palette,
         color_converter: ColorConverter,
+        color_picker: PsxColorPicker,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Edit palette")
         self._converter = color_converter
+        self._picker = color_picker
 
         self._name_edit = QLineEdit(palette.name)
         self._name_edit.setPlaceholderText("e.g. Sunset — warm oranges")
@@ -128,7 +131,7 @@ class PaletteEditDialog(QDialog):
         index_label.setMinimumWidth(36)
         layout.addWidget(index_label)
 
-        button = PsxColorButton(self._converter, color, parent=row)
+        button = PsxColorButton(self._converter, self._picker, color, parent=row)
         button.color_picked.connect(lambda c, i=index: self._on_color_picked(i, c))
         layout.addWidget(button)
 

@@ -57,7 +57,7 @@ Each `.json` is a single `Paintjob`:
 | `author`            | string                     | Artist-supplied author tag. May be empty.                                                                                                                        |
 | `kart_type`         | `"kart"` \| `"hovercraft"` | Which vehicle class the paintjob targets. A kart paintjob can preview on any kart character, never on a hovercraft, and vice versa.                              |
 | `base_character_id` | string \| null             | Non-authoritative home-character hint. Used by the designer's preview fallback. Consumers may use it to infer default character bindings but aren't required to. |
-| `slots`             | object                     | Map of slot name → slot payload. Only kart-side slots appear here. Slot names are taken from the active profile's `kart_slots` list.                             |
+| `slots`             | object                     | Map of slot name → slot payload. Only kart-side slots appear here. Slot names are the profile's `kart_slots` names.                                              |
 
 Paintjobs are **kart-only and character-portable**. The designer enforces this by only seeding `kart_slots` from the profile when a paintjob is created and by hiding the skin-side scope from the Transform Colors panel in paintjob mode. The character bound to a skin (its `character_id`) and the character a paintjob lives "on" (its `base_character_id`) are entirely independent.
 
@@ -128,6 +128,6 @@ front, back, floor, brown, motorside, motortop, bridge, exhaust,
 rearbase, seattop, exhaustholes, seatside, exhaustmount, underfloor, steering
 ```
 
-For `hovercraft` paintjobs (Oxide), the kart-slot list is a different set of 7 names that mirror Oxide's hovercraft geometry — see the active profile's `kart_slots` entry for the exact names.
+For `hovercraft` paintjobs (Oxide), the kart-slot list is a different set of 7 names that mirror Oxide's hovercraft geometry — see Oxide's `kart_slots` in `config/profile.json` for the exact names.
 
-Consumer tools should use these exact spellings when looking up entries in the `slots` map. Any slot name not in the active profile's kart_slots list is "unrecognized"; the designer may still preserve round-trip if the JSON has it, but consumers targeting CTR should ignore or error on unknown names.
+Consumer tools should use these exact spellings when looking up entries in the `slots` map. Any slot name not in the profile's `kart_slots` list is "unrecognized"; the designer may still preserve round-trip if the JSON has it, but consumers targeting CTR should ignore or error on unknown names.

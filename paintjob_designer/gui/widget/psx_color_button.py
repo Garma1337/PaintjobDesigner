@@ -1,15 +1,15 @@
 # coding: utf-8
 
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QColorDialog, QPushButton, QWidget
+from PySide6.QtWidgets import QPushButton, QWidget
 
 from paintjob_designer.color.converter import ColorConverter
-from paintjob_designer.models import PsxColor, Rgb888
+from paintjob_designer.gui.widget.color_picker import PsxColorPicker
+from paintjob_designer.models import PsxColor
 
 
 class PsxColorButton(QPushButton):
-    """Push-button that shows a PSX color and opens `QColorDialog` on click."""
+    """Push-button that shows a PSX color and opens the color picker on click."""
 
     color_picked = Signal(PsxColor)
 
@@ -19,12 +19,14 @@ class PsxColorButton(QPushButton):
     def __init__(
         self,
         color_converter: ColorConverter,
+        color_picker: PsxColorPicker,
         initial: PsxColor,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(self._OBJECT_NAME)
         self._converter = color_converter
+        self._picker = color_picker
         self._color = initial
         self.setFixedSize(*self._SIZE)
         self.clicked.connect(self._open_picker)
@@ -52,28 +54,9 @@ class PsxColorButton(QPushButton):
         )
 
     def _open_picker(self) -> None:
-        current = self._converter.psx_to_rgb(self._color)
-        initial_alpha = 0 if self._color.is_transparent else 255
-        initial_q = QColor(current.r, current.g, current.b, initial_alpha)
-
-        options = (
-            QColorDialog.ColorDialogOption.DontUseNativeDialog
-            | QColorDialog.ColorDialogOption.ShowAlphaChannel
-        )
-
-        chosen = QColorDialog.getColor(initial_q, self, "Pick color", options)
-        if not chosen.isValid():
+        psx = self._picker.pick(self._color, parent=self, title="Pick color")
+        if psx is None:
             return
-
-        # Alpha is binary on PSX: half-opacity isn't representable, so any
-        # picked alpha below 128 collapses to the transparent sentinel.
-        if chosen.alpha() < 128:
-            psx = PsxColor(value=0)
-        else:
-            psx = self._converter.rgb_to_psx(
-                Rgb888(r=chosen.red(), g=chosen.green(), b=chosen.blue()),
-                stp=self._color.stp,
-            )
 
         self.set_color(psx)
         self.color_picked.emit(psx)

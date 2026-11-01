@@ -10,6 +10,7 @@ in vec3 v_vcolor;
 
 uniform sampler2D u_atlas;
 uniform int u_has_focus;
+uniform int u_alpha_from_color;
 
 out vec4 out_color;
 
@@ -50,6 +51,10 @@ void main() {
     vec3 shaded = apply_shade(base);
     if (u_has_focus == 1 && v_highlight < 0.5) {
         shaded *= DIMMED_FACTOR;
+    }
+
+    if (u_alpha_from_color == 1) {
+        alpha = max(shaded.r, max(shaded.g, shaded.b));
     }
 
     out_color = vec4(shaded, alpha);

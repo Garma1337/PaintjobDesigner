@@ -29,12 +29,14 @@ class AnimationController(QObject):
         vertex_assembler: VertexAssembler,
         bundle_provider: Callable[[], object | None],
         on_positions: Callable[[np.ndarray], None],
+        on_wheels_rolling: Callable[[bool], None] = lambda _rolling: None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._vertex_assembler = vertex_assembler
         self._bundle_provider = bundle_provider
         self._on_positions = on_positions
+        self._on_wheels_rolling = on_wheels_rolling
 
         self._timer = QTimer(self)
         self._timer.setInterval(int(1000 / self.DEFAULT_FPS))
@@ -111,6 +113,13 @@ class AnimationController(QObject):
             "wrapping back to the start.",
         )
         layout.addRow("", self._loop_check)
+
+        self._rolling_wheels_check = QCheckBox("Rolling wheels")
+        self._rolling_wheels_check.setToolTip(
+            "Roll the wheels forward around their axles. Unchecked, they stand still.",
+        )
+        self._rolling_wheels_check.toggled.connect(self._on_wheels_rolling)
+        layout.addRow("", self._rolling_wheels_check)
 
         self._set_controls_enabled(False)
         return group

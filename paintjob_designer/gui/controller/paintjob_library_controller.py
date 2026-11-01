@@ -187,7 +187,6 @@ class PaintjobLibraryController(LibraryController[Paintjob, PaintjobLibrary]):
             return
 
         index = self._library.add(loaded)
-        # Imports invalidate undo (commands captured pre-import refs).
         self.library_reset.emit()
         self._refresh_sidebar(index)
         self._after_mutation()
@@ -314,9 +313,7 @@ class PaintjobLibraryController(LibraryController[Paintjob, PaintjobLibrary]):
         self.apply_metadata(index, edit)
 
     def apply_metadata(self, index: int, edit) -> None:
-        """Atomic mutation: name + author + base_character_id in one go.
-        Pure data manipulation; unit-testable without a Qt event loop.
-        """
+        """Atomic mutation: name + author + base_character_id in one go."""
         if not (0 <= index < self._library.count()):
             return
 
@@ -337,7 +334,7 @@ class PaintjobLibraryController(LibraryController[Paintjob, PaintjobLibrary]):
 
         for slot_profile in character.kart_slots:
             defaults = self._color_handler.default_slot_colors_at(
-                self._iso_root, slot_profile.clut_race.x, slot_profile.clut_race.y,
+                self._iso_root, slot_profile.clut.x, slot_profile.clut.y,
             )
             slots[slot_profile.name] = SlotColors(colors=list(defaults))
 

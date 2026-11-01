@@ -10,10 +10,10 @@ from typing import Any
 class AppConfig:
     """Per-user settings persisted between sessions."""
     iso_root: str = ""
-    last_profile_id: str = "vanilla-ntsc-u"
     library: dict | None = None
     palettes: list[dict] = field(default_factory=list)
     skins: dict | None = None
+    wheels: dict | None = None
 
 
 class ConfigStore:
@@ -37,10 +37,10 @@ class ConfigStore:
 
         return AppConfig(
             iso_root=str(raw.get("iso_root", "")),
-            last_profile_id=str(raw.get("last_profile_id", "vanilla-ntsc-u")),
             library=self.coerce_library(raw.get("library")),
             palettes=self.coerce_palettes(raw.get("palettes")),
             skins=self.coerce_library(raw.get("skins")),
+            wheels=self.coerce_library(raw.get("wheels")),
         )
 
     def save(self, config: AppConfig) -> None:
@@ -48,7 +48,6 @@ class ConfigStore:
 
         data: dict[str, Any] = {
             "iso_root": config.iso_root,
-            "last_profile_id": config.last_profile_id,
             "palettes": list(config.palettes),
         }
 
@@ -57,6 +56,9 @@ class ConfigStore:
 
         if config.skins is not None:
             data["skins"] = config.skins
+
+        if config.wheels is not None:
+            data["wheels"] = config.wheels
 
         self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 

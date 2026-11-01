@@ -6,16 +6,14 @@ from paintjob_designer.models import (
     CharacterProfile,
     ClutCoord,
     KartType,
-    PaintjobSlotProfile,
     Profile,
     SlotProfile,
-    VramPageDimensions,
 )
 from paintjob_designer.schema_keys import CommonKey, ProfileKey
 
 
 class ProfileReader:
-    """Parses a target-profile JSON document into a `Profile`."""
+    """Parses the bundled profile JSON into a `Profile` (kart slots only)."""
 
     def read(self, data: str | bytes) -> Profile:
         if isinstance(data, bytes):
@@ -37,40 +35,11 @@ class ProfileReader:
                 f"(expected {Profile.SCHEMA_VERSION})"
             )
 
-        vram = raw.get(ProfileKey.VRAM_PAGE) or {}
-        vram_page = VramPageDimensions(
-            width=int(vram.get(ProfileKey.WIDTH, 1024)),
-            height=int(vram.get(ProfileKey.HEIGHT, 512)),
-        )
-
         characters = [
             self._parse_character(c) for c in raw.get(ProfileKey.CHARACTERS, [])
         ]
 
-        paintjob_slots = [
-            self._parse_paintjob_slot(s)
-            for s in raw.get(ProfileKey.PAINTJOB_SLOTS, [])
-        ]
-
-        return Profile(
-            schema_version=schema_version,
-            id=str(raw.get(CommonKey.ID, "")),
-            display_name=str(raw.get(CommonKey.DISPLAY_NAME, "")),
-            vram_page=vram_page,
-            characters=characters,
-            paintjob_slots=paintjob_slots,
-        )
-
-    def _parse_paintjob_slot(self, raw: dict) -> PaintjobSlotProfile:
-        default_char_raw = raw.get(ProfileKey.DEFAULT_CHARACTER_ID)
-        default_character_id: str | None = (
-            str(default_char_raw) if default_char_raw else None
-        )
-
-        return PaintjobSlotProfile(
-            name=str(raw.get(CommonKey.NAME, "")),
-            default_character_id=default_character_id,
-        )
+        return Profile(schema_version=schema_version, characters=characters)
 
     def _parse_character(self, raw: dict) -> CharacterProfile:
         kart_type_raw = str(raw.get(ProfileKey.KART_TYPE, KartType.KART.value))
@@ -91,28 +60,16 @@ class ProfileReader:
             kart_slots=[
                 self._parse_slot(s) for s in raw.get(ProfileKey.KART_SLOTS, [])
             ],
-            skin_slots=[
-                self._parse_slot(s) for s in raw.get(ProfileKey.SKIN_SLOTS, [])
-            ],
         )
 
     def _parse_slot(self, raw: dict) -> SlotProfile:
-        clut_race_raw = raw.get(ProfileKey.CLUT_RACE) or {}
-        clut_menu_raw = raw.get(ProfileKey.CLUT_MENU)
-
-        clut_menu = None
-        if clut_menu_raw is not None:
-            clut_menu = ClutCoord(
-                x=int(clut_menu_raw.get(ProfileKey.CLUT_X, 0)),
-                y=int(clut_menu_raw.get(ProfileKey.CLUT_Y, 0)),
-            )
+        clut_raw = raw.get(ProfileKey.CLUT) or {}
 
         return SlotProfile(
             name=str(raw.get(CommonKey.NAME, "")),
-            clut_race=ClutCoord(
-                x=int(clut_race_raw.get(ProfileKey.CLUT_X, 0)),
-                y=int(clut_race_raw.get(ProfileKey.CLUT_Y, 0)),
+            clut=ClutCoord(
+                x=int(clut_raw.get(ProfileKey.CLUT_X, 0)),
+                y=int(clut_raw.get(ProfileKey.CLUT_Y, 0)),
             ),
-            clut_menu=clut_menu,
             non_portable=bool(raw.get(ProfileKey.NON_PORTABLE, False)),
         )

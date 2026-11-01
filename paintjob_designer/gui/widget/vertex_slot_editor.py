@@ -46,10 +46,10 @@ class VertexSlotEditor(QWidget):
         self._enabled = False
         self._focused_index: int | None = None
 
-        self._swatches: list[ColorSwatch] = []
-        self._row_frames: list[QFrame] = []
-        self._highlight_buttons: list[QPushButton] = []
-        self._reset_buttons: list[QPushButton] = []
+        self._swatches: dict[int, ColorSwatch] = {}
+        self._row_frames: dict[int, QFrame] = {}
+        self._highlight_buttons: dict[int, QPushButton] = {}
+        self._reset_buttons: dict[int, QPushButton] = {}
 
         self._empty_label = QLabel(
             "No character loaded — vertex slots appear here once a "
@@ -102,22 +102,25 @@ class VertexSlotEditor(QWidget):
         self,
         colors: list[Rgb888],
         overridden: set[int] | None = None,
+        visible: set[int] | None = None,
     ) -> None:
-        """(Re)build the per-vertex rows for a new character's gouraud table."""
+        """(Re)build the per-vertex rows for a new character's gouraud table;
+        `visible` limits the rows to those indices (all when None)."""
         self._clear_rows()
         self._colors = list(colors)
         self._overridden = set(overridden) if overridden is not None else set()
         self._focused_index = None
 
-        if not self._colors:
+        indices = [i for i in range(len(self._colors)) if visible is None or i in visible]
+        if not indices:
             self._empty_label.show()
             self._sync_top_buttons()
             return
 
         self._empty_label.hide()
 
-        for i, color in enumerate(self._colors):
-            row = self._build_row(i, color)
+        for i in indices:
+            row = self._build_row(i, self._colors[i])
             # Insert above the trailing stretch so rows pack to the top.
             self._content_layout.insertWidget(self._content_layout.count() - 1, row)
 
@@ -130,7 +133,7 @@ class VertexSlotEditor(QWidget):
         color: Rgb888,
         is_overridden: bool = False,
     ) -> None:
-        if not (0 <= index < len(self._swatches)):
+        if index not in self._swatches:
             return
 
         self._colors[index] = color
@@ -189,10 +192,10 @@ class VertexSlotEditor(QWidget):
 
         row_layout.addStretch()
 
-        self._swatches.append(swatch)
-        self._row_frames.append(row)
-        self._highlight_buttons.append(highlight_button)
-        self._reset_buttons.append(reset_button)
+        self._swatches[index] = swatch
+        self._row_frames[index] = row
+        self._highlight_buttons[index] = highlight_button
+        self._reset_buttons[index] = reset_button
 
         self._apply_row_style(index)
         return row
@@ -211,7 +214,7 @@ class VertexSlotEditor(QWidget):
         )
 
     def _clear_rows(self) -> None:
-        for row in self._row_frames:
+        for row in self._row_frames.values():
             self._content_layout.removeWidget(row)
             row.deleteLater()
 
@@ -221,13 +224,13 @@ class VertexSlotEditor(QWidget):
         self._reset_buttons.clear()
 
     def _sync_enabled(self) -> None:
-        for swatch in self._swatches:
+        for swatch in self._swatches.values():
             swatch.setEnabled(self._enabled)
 
-        for btn in self._highlight_buttons:
+        for btn in self._highlight_buttons.values():
             btn.setEnabled(bool(self._colors))
 
-        for i in range(len(self._reset_buttons)):
+        for i in self._reset_buttons:
             self._apply_row_style(i)
 
     def _sync_top_buttons(self) -> None:
@@ -275,11 +278,11 @@ class VertexSlotEditor(QWidget):
         previous = self._focused_index
         self._focused_index = index
 
-        if previous is not None and 0 <= previous < len(self._row_frames):
+        if previous in self._row_frames:
             self._highlight_buttons[previous].setChecked(False)
             self._apply_row_style(previous)
 
-        if index is not None and 0 <= index < len(self._row_frames):
+        if index in self._row_frames:
             self._highlight_buttons[index].setChecked(True)
             self._apply_row_style(index)
 

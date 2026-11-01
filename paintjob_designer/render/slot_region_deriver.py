@@ -28,7 +28,10 @@ _PAGE_HEIGHT = 256
 
 class SlotRegionDeriver:
     """Groups a `CtrMesh`'s `TextureLayout`s by CLUT coordinate and matches each
-    group to a `SlotProfile`, producing the VRAM rectangles a paintjob slot owns.
+    group to a `SlotProfile`, producing the VRAM rectangles a slot owns.
+
+    The profile's skin slots are derived from the same mesh, so every
+    sampled CLUT belongs to a slot.
     """
 
     def derive(
@@ -37,57 +40,38 @@ class SlotRegionDeriver:
         character: CharacterProfile,
     ) -> CharacterSlotRegions:
         groups = self._group_layouts(mesh)
-        slots_by_clut = {(s.clut_race.x, s.clut_race.y): s for s in character.slots}
+        slots_by_clut = {(s.clut.x, s.clut.y): s for s in character.slots}
 
         result = CharacterSlotRegions(character_id=character.id)
-        unmatched_by_clut: dict[tuple[int, int], SlotRegions] = {}
 
         for (palette_x, palette_y, page_x, page_y, bpp), layouts in groups.items():
             clut_x = palette_x * 16
             clut_y = palette_y
-            region = self._compute_region(layouts, page_x, page_y, bpp)
             slot = slots_by_clut.get((clut_x, clut_y))
-
-            if slot is not None:
-                entry = result.slots.setdefault(
-                    slot.name,
-                    SlotRegions(slot_name=slot.name, clut=ClutCoord(x=clut_x, y=clut_y)),
+            if slot is None:
+                raise ValueError(
+                    f"{character.id}: mesh samples CLUT ({clut_x},{clut_y}) "
+                    f"that no slot covers"
                 )
 
-                entry.regions.append(region)
-                continue
+            entry = result.slots.setdefault(
+                slot.name,
+                SlotRegions(slot_name=slot.name, clut=ClutCoord(x=clut_x, y=clut_y)),
+            )
 
-            # Unmatched palette — still decoded for 3D rendering, but never
-            # paintjob-editable. Collapse same-CLUT regions on different pages
-            # into one SlotRegions so consumers can iterate cleanly.
-            key = (clut_x, clut_y)
-            entry = unmatched_by_clut.get(key)
+            entry.regions.append(self._compute_region(layouts, page_x, page_y, bpp))
 
-            if entry is None:
-                entry = SlotRegions(
-                    slot_name=f"unmatched@{clut_x},{clut_y}",
-                    clut=ClutCoord(x=clut_x, y=clut_y),
-                )
-
-                unmatched_by_clut[key] = entry
-
-            entry.regions.append(region)
-
-        # Profile slots whose CLUT isn't sampled by any mesh layout still need
-        # to be editable — the colors live in VRAM and may be referenced by
-        # game code outside the mesh.
-        # Surface them with an empty `regions` list so the slot editor shows
-        # a row but no preview/highlight kicks in.
+        # Kart slots whose shared CLUT this mesh doesn't sample stay editable
+        # (other characters' karts use them); empty `regions` = orphan slot.
         for slot in character.slots:
             if slot.name in result.slots:
                 continue
 
             result.slots[slot.name] = SlotRegions(
                 slot_name=slot.name,
-                clut=ClutCoord(x=slot.clut_race.x, y=slot.clut_race.y),
+                clut=ClutCoord(x=slot.clut.x, y=slot.clut.y),
             )
 
-        result.unmatched_regions = [unmatched_by_clut[k] for k in sorted(unmatched_by_clut)]
         return result
 
     def _group_layouts(

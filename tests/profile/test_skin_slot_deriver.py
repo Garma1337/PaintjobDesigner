@@ -31,7 +31,7 @@ def _mesh(palette_coords: list[tuple[int, int]]) -> CtrMesh:
 
 
 def _kart_slot(name: str, vram_x: int, vram_y: int) -> SlotProfile:
-    return SlotProfile(name=name, clut_race=ClutCoord(x=vram_x, y=vram_y))
+    return SlotProfile(name=name, clut=ClutCoord(x=vram_x, y=vram_y))
 
 
 class TestSkinSlotDeriver:
@@ -45,7 +45,7 @@ class TestSkinSlotDeriver:
 
         slots = self._deriver.derive(mesh, kart_slots=[])
 
-        assert {(s.clut_race.x, s.clut_race.y) for s in slots} == {(112, 255), (304, 252)}
+        assert {(s.clut.x, s.clut.y) for s in slots} == {(112, 255), (304, 252)}
 
     def test_kart_slots_are_excluded(self) -> None:
         mesh = _mesh([(7, 255), (7, 250), (7, 253)])
@@ -53,7 +53,7 @@ class TestSkinSlotDeriver:
 
         slots = self._deriver.derive(mesh, kart_slots=kart)
 
-        assert [(s.clut_race.x, s.clut_race.y) for s in slots] == [(112, 253)]
+        assert [(s.clut.x, s.clut.y) for s in slots] == [(112, 253)]
 
     def test_distinct_clut_coords_are_deduplicated(self) -> None:
         # 5 layouts but only 2 distinct CLUTs.
@@ -70,19 +70,12 @@ class TestSkinSlotDeriver:
 
         assert slots[0].name == "extra_112_253"
 
-    def test_clut_menu_is_none_for_derived_slots(self) -> None:
-        mesh = _mesh([(7, 253)])
-
-        slots = self._deriver.derive(mesh, kart_slots=[])
-
-        assert slots[0].clut_menu is None
-
     def test_results_are_sorted_by_y_then_x(self) -> None:
         mesh = _mesh([(19, 253), (7, 255), (7, 250), (19, 250)])
 
         slots = self._deriver.derive(mesh, kart_slots=[])
 
-        assert [(s.clut_race.x, s.clut_race.y) for s in slots] == [
+        assert [(s.clut.x, s.clut.y) for s in slots] == [
             (112, 250),
             (304, 250),
             (304, 253),
