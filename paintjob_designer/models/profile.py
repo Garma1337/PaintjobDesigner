@@ -32,6 +32,10 @@ class CharacterProfile:
 
     `kart_slots` come from the bundled profile; `skin_slots` are derived
     from the character's mesh when the ISO loads.
+
+    `kart_vertex_slots` lists the gouraud indices that belong to the kart even
+    though untextured faces use them. Those faces have no CLUT, so the mesh
+    can't tell kart from character.
     """
 
     id: str = ""
@@ -39,6 +43,7 @@ class CharacterProfile:
     mesh_source: str = ""
     kart_type: KartType = KartType.KART
     kart_slots: list[SlotProfile] = field(default_factory=list)
+    kart_vertex_slots: list[int] = field(default_factory=list)
     skin_slots: list[SlotProfile] = field(default_factory=list)
 
     @property

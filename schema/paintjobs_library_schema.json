@@ -20,6 +20,27 @@
       "title": "PsxColor",
       "type": "string"
     },
+    "Rgb888": {
+      "properties": {
+        "r": {
+          "default": 0,
+          "title": "R",
+          "type": "integer"
+        },
+        "g": {
+          "default": 0,
+          "title": "G",
+          "type": "integer"
+        },
+        "b": {
+          "default": 0,
+          "title": "B",
+          "type": "integer"
+        }
+      },
+      "title": "Rgb888",
+      "type": "object"
+    },
     "SlotColors": {
       "description": "One CLUT slot on a paintjob: 16 colors + optional per-region pixels.",
       "properties": {
@@ -76,7 +97,7 @@
       "type": "object"
     }
   },
-  "description": "A single kart paintjob: one entry per kart slot, each 16 colors,\noptionally with custom textures.",
+  "description": "A single kart paintjob: one entry per kart slot, each 16 colors,\noptionally with custom textures.\n\n`vertex_overrides` index the gouraud table of `base_character_id`. Every\ncharacter has its own table, so they don't carry over to other characters.",
   "properties": {
     "schema_version": {
       "default": 2,
@@ -114,6 +135,13 @@
         "$ref": "#/$defs/SlotColors"
       },
       "title": "Slots",
+      "type": "object"
+    },
+    "vertex_overrides": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Rgb888"
+      },
+      "title": "Vertex Overrides",
       "type": "object"
     }
   },

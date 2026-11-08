@@ -1,6 +1,6 @@
 # CTR Paintjob Designer
 
-A graphical editor for Crash Team Racing **paintjobs** (kart-only CLUT swaps + optional 4bpp textures) and **skins** (per-character recolors that touch the character's own CLUTs *and* gouraud vertex colors), with an accurate 3D preview. Build a library of paintjobs and a library of skins against your extracted CTR ISO and save each as a directory of JSON files — those **two library directories are the designer's only output**.
+A graphical editor for Crash Team Racing **paintjobs** (kart-only CLUT swaps + optional 4bpp textures and kart vertex colors) and **skins** (per-character recolors that touch the character's own CLUTs *and* gouraud vertex colors), with an accurate 3D preview. Build a library of paintjobs and a library of skins against your extracted CTR ISO and save each as a directory of JSON files — those **two library directories are the designer's only output**.
 
 Downstream mods (e.g. Saphi) own their own tools that consume the libraries and produce mod-specific artifacts (source files, binaries, linker scripts). The designer is just a front-end for the visual creation of paintjobs and skins; each mod owns the integration.
 
@@ -17,7 +17,7 @@ Downstream mods (e.g. Saphi) own their own tools that consume the libraries and 
 
 - **Per-slot CLUT editing** — pick any of a slot's 16 colors through a PSX-quantized color picker; edits snap to the PS1 5-5-5 color grid as you pick.
 - **Orphan slots** — kart slots whose shared CLUT the selected character's mesh doesn't sample (other karts do) stay editable in their own tab.
-- **Vertex-color editing** (skins only) — every entry in the character's gouraud-color table is editable; the override is saved on the skin and re-rendered live.
+- **Vertex-color editing** — skins edit the gouraud colors the character uses, and paintjobs edit the ones only the kart uses. Overrides are saved on the asset and re-rendered live.
 - **Texture import / export** — replace a slot's pixels with a PNG (quantized to 15 colors + transparent, packed 4bpp, baked into the asset JSON), or export the slot's current pixels back to PNG for round-tripping through an external editor. Both single-region and multi-region slots are supported.
 - **Transform Colors** — seven stackable color operations (replace matching color, replace hue, shift hue, shift saturation, shift brightness, RGB delta, invert), scoped to the current slot or to every kart/skin slot at once. Changes stream into the 3D view live; the full stack commits as a single undo entry.
 - **Vertex transform** — the same color operations applied to a skin's gouraud vertex colors, leaving colors the kart shares alone by default (they would tint the kart through `texture × vertex_color` modulation).

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, Signal
 from PySide6.QtWidgets import QMenu, QWidget
 
 from paintjob_designer.core import Slugifier
@@ -32,6 +32,9 @@ _PAINTJOB_FILTER = f"Paintjob (*{_PAINTJOB_EXT})"
 
 class PaintjobLibraryController(LibraryController[Paintjob, PaintjobLibrary]):
     """Owns the paintjob library + sidebar + all paintjob CRUD."""
+
+    # (paintjob, previous base character id, previous vertex overrides)
+    base_character_changed = Signal(object, object, object)
 
     def __init__(
         self,
@@ -158,10 +161,9 @@ class PaintjobLibraryController(LibraryController[Paintjob, PaintjobLibrary]):
             "Base character for this paintjob:", options, current_index,
         )
 
-        if chosen is None:
+        if chosen is None or not self._change_base_character(paintjob, None if chosen == none_label else chosen):
             return
 
-        paintjob.base_character_id = None if chosen == none_label else chosen
         self._refresh_sidebar(index)
         self._after_mutation()
 
@@ -320,16 +322,52 @@ class PaintjobLibraryController(LibraryController[Paintjob, PaintjobLibrary]):
             return
 
         paintjob = self._library.paintjobs[index]
-        previous_base = paintjob.base_character_id
         paintjob.name = edit.name
         paintjob.author = edit.author
-        paintjob.base_character_id = edit.base_character_id
+        base_changed = self._change_base_character(paintjob, edit.base_character_id)
 
         self._refresh_sidebar(index)
         self._after_mutation()
 
-        if paintjob is self._current and previous_base != edit.base_character_id:
+        if paintjob is self._current and base_changed:
             self.selection_changed.emit(self._current)
+
+    def restore_base_character(
+        self, paintjob: Paintjob, base_character_id: str | None, vertex_overrides: dict,
+    ) -> None:
+        """Undo / redo of a base character change."""
+        try:
+            index = self._library.paintjobs.index(paintjob)
+        except ValueError:
+            return
+
+        paintjob.base_character_id = base_character_id
+        paintjob.vertex_overrides = dict(vertex_overrides)
+        self._refresh_sidebar(index)
+        self._after_mutation()
+
+        if paintjob is self._current:
+            self.selection_changed.emit(self._current)
+
+    def _change_base_character(self, paintjob: Paintjob, base_character_id: str | None) -> bool:
+        """Changing the base drops the vertex overrides, so ask first when
+        there are any. Returns whether the base changed."""
+        if base_character_id == paintjob.base_character_id:
+            return False
+
+        count = len(paintjob.vertex_overrides)
+        if count and not self._message.confirm_destructive(
+            self._parent_widget, "Change base character",
+            f"This paintjob has {count} vertex color override{'s' if count != 1 else ''}. "
+            "They belong to the current base character's color table, so changing "
+            "the base character removes them. Continue?",
+        ):
+            return False
+
+        previous = (paintjob.base_character_id, dict(paintjob.vertex_overrides))
+        paintjob.set_base_character(base_character_id)
+        self.base_character_changed.emit(paintjob, *previous)
+        return True
 
     def _seed_slots(self, character: CharacterProfile) -> dict[str, SlotColors]:
         slots: dict[str, SlotColors] = {}

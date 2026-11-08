@@ -3,7 +3,7 @@
 import base64
 import json
 
-from paintjob_designer.models import KartType, Paintjob, SlotColors, SlotRegionPixels
+from paintjob_designer.models import KartType, Paintjob, Rgb888, SlotColors, SlotRegionPixels
 from tests.conftest import slot_of
 
 
@@ -20,6 +20,14 @@ class TestPaintjobWriter:
         assert doc["kart_type"] == "kart"
         assert doc["base_character_id"] is None
         assert doc["slots"] == {}
+
+    def test_vertex_overrides_round_trip_with_int_keys(self, paintjob_reader, paintjob_writer):
+        paintjob = Paintjob(vertex_overrides={51: Rgb888(r=1, g=2, b=3)})
+
+        text = paintjob_writer.serialize(paintjob)
+
+        assert json.loads(text)["vertex_overrides"] == {"51": {"r": 1, "g": 2, "b": 3}}
+        assert paintjob_reader.read(text).vertex_overrides == paintjob.vertex_overrides
 
     def test_serializes_hovercraft_kart_type(self, paintjob_writer):
         paintjob = Paintjob(name="Hover", kart_type=KartType.HOVERCRAFT)

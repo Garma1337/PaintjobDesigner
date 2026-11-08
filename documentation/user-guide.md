@@ -129,7 +129,7 @@ Each skin carries:
 - **Author** — credit line, shown muted under the name.
 - **Bound character** — required, set at creation; can't be changed (unlike paintjob's editable base character).
 - **Slot colors and textures** — the 16 colors per skin slot, optional imported pixel data per slot.
-- **Vertex overrides** — RGB replacements for entries in the character's gouraud color table. Skin-only feature — paintjobs don't have these.
+- **Vertex overrides** — RGB replacements for entries in the character's gouraud color table that the character's own faces use. Paintjobs have their own for the kart's colors; see [Vertex Slots Tab](#vertex-slots-tab).
 
 ### Sidebar Context Menu
 
@@ -144,7 +144,7 @@ The Skins sidebar also has the same **Filter...** box as the Paintjobs tab.
 
 ### Vertex Slots Tab
 
-When a skin is selected, the right pane shows a second tab labeled **Vertex slots** alongside the regular CLUT slot editor. It's a per-vertex row list (`v0`, `v1`, …) of the character's gouraud colors. The kart and the character share one color table, so only colors the character's faces use are listed: colors used only by kart faces (triangles textured with a kart-slot palette) and colors nothing uses are hidden, since changing them would recolor the kart rather than the character. Gaps in the numbering are those hidden colors.
+When a skin is selected, the right pane shows a second tab labeled **Vertex slots** alongside the regular CLUT slot editor. It's a per-vertex row list (`v0`, `v1`, …) of the character's gouraud colors. The kart and the character share one color table, so only colors the character's faces use are listed: colors used only by kart faces (triangles textured with a kart-slot palette), colors the profile assigns to the kart (those are edited on the paintjob; see below) and colors nothing uses are hidden, since changing them would recolor the kart rather than the character. Gaps in the numbering are those hidden colors.
 
 Each row carries a swatch + **Highlight** toggle + **Reset** button, mirroring the CLUT slot editor:
 
@@ -156,7 +156,9 @@ Each row carries a swatch + **Highlight** toggle + **Reset** button, mirroring t
 
 Above the list, a button strip exposes **Transform...** (opens the modeless vertex transform panel — see below) and **Reset all** (drops every vertex override on the active skin in one undo step).
 
-The Vertex slots tab is read-only in preview mode and hidden in paintjob and wheel mode, since neither can carry vertex overrides.
+The Vertex slots tab is read-only in preview mode and hidden in wheel mode.
+
+Paintjobs get the Vertex slots tab too, listing the colors only the kart uses: those on faces textured with a kart-slot palette, plus colors the profile assigns to the kart (untextured kart parts, which the mesh alone can't tell apart from the character). Kart-textured faces are tinted by these colors, which is why Oxide's hoverkart stays green with a blue palette until its vertex colors change; a mid grey (127, 127, 127) leaves the texture untouched. Colors the character uses too stay on the skin. If the kart has no colors of its own, the tab is hidden in paintjob mode. Every character has its own color table, so these overrides only apply on the paintjob's **base character**: preview it on anyone else and the tab is read-only and the kart keeps its baked colors. Changing the base character clears them; the designer asks first, and **Edit → Undo** brings them back. In the Preview tab, a skin's override of the same color wins over the paintjob's.
 
 ### Orphan Slots Tab
 
@@ -200,7 +202,7 @@ The Preview tab is read-only. It has four combos:
 - **Skin** — any skin bound to the chosen character. "(none)" leaves the skin slots and vertex colors at their vanilla values.
 - **Wheel** — any wheel design (kart characters only). "(none)" shows the game's tires.
 
-The 3D viewer shows the composition: paintjob CLUTs + skin CLUTs + skin vertex overrides, all on the chosen character's mesh. Editing is disabled (the swatch grid and vertex grid are visible but inactive); switch to the Paintjobs or Skins tab to make changes.
+The 3D viewer shows the composition: paintjob CLUTs + skin CLUTs + vertex overrides, all on the chosen character's mesh. The paintjob's vertex overrides only apply when the chosen character is its base character, and the skin's win where both set the same color. Editing is disabled (the swatch grid and vertex grid are visible but inactive); switch to the Paintjobs or Skins tab to make changes.
 
 The top "Preview on:" strip is hidden in this tab — the sidebar's character combo replaces it.
 
@@ -271,7 +273,7 @@ Character models mix several kinds of surfaces, and the editor mode decides whic
 
 - **Kart-side CLUT surfaces** — sampled from the kart slots a paintjob edits. Most of the kart body is built this way. Editable in paintjob mode.
 - **Skin-side CLUT surfaces** — sampled from skin slots (face, accessories). Editable in skin mode.
-- **Gouraud-shaded surfaces** — driver body. Editable via the Vertex slots tab in skin mode.
+- **Gouraud-shaded surfaces** — driver body, and untextured kart parts. Editable via the Vertex slots tab: in skin mode for the driver, in paintjob mode for colors only the kart uses.
 - **Fixed surfaces** — hard-coded colors baked into the model that no paintjob/skin touches. Reported as "not editable" by the eyedropper.
 - **Wheels** — drawn separately from the character model and edited in the Wheels tab. The eyedropper doesn't pick them; right-clicking one opens the viewer's context menu.
 

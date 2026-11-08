@@ -25,6 +25,7 @@ class ProfileKey:
     MESH_SOURCE = "mesh_source"
     KART_TYPE = "kart_type"
     KART_SLOTS = "kart_slots"
+    KART_VERTEX_SLOTS = "kart_vertex_slots"
     CLUT = "clut"
     CLUT_X = "x"
     CLUT_Y = "y"
@@ -35,6 +36,7 @@ class PaintjobKey:
     SLOTS = "slots"
     COLORS = "colors"
     BASE_CHARACTER_ID = "base_character_id"
+    VERTEX_OVERRIDES = "vertex_overrides"
 
 
 class SkinKey:

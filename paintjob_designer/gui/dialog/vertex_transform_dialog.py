@@ -22,7 +22,7 @@ from paintjob_designer.models import Rgb888
 
 
 class VertexTransformDialog(QDialog):
-    """Modeless panel for stacking transforms on a Skin's gouraud vertex
+    """Modeless panel for stacking transforms on an asset's gouraud vertex
     colors. Mirrors `TransformColorsPanel`'s Apply / Close lifecycle.
     """
 
@@ -109,6 +109,7 @@ class VertexTransformDialog(QDialog):
         self._colors = list(colors)
         self._skin_indices = set(range(len(colors))) if skin_indices is None else set(skin_indices)
         self._shared_indices = set(shared_indices or ())
+        self._include_kart.setVisible(bool(self._shared_indices))
         self._refresh_intro()
         self._refresh_summary()
 

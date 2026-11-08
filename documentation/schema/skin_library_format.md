@@ -2,9 +2,9 @@
 
 # Skin Library Format
 
-This document describes the on-disk format the designer writes when you "Export Skin Library As…". A *skin* is a character-bound recolor: it edits the CLUTs and gouraud vertex colors that paintjobs don't touch (the driver body, the face, character-specific accessories) and is locked to a single character.
+This document describes the on-disk format the designer writes when you "Export Skin Library As…". A *skin* is a character-bound recolor: it edits the CLUTs and gouraud vertex colors of the character itself (the driver body, the face, character-specific accessories) and is locked to a single character.
 
-For the parallel paintjob-library format (kart-only, character-portable), see [paintjob_library_format.md](paintjob_library_format.md).
+For the parallel paintjob-library format (kart-only, with CLUT slots that are character-portable), see [paintjob_library_format.md](paintjob_library_format.md).
 
 **Machine-readable schema**: [`schema/skins_library_schema.json`](../../schema/skins_library_schema.json). Generated from the pydantic models in `paintjob_designer/models/` and kept in lockstep with them via `tests/skin/test_schema.py`. Consumer tools in other languages can validate against this file using any JSON Schema library; the fields / types / examples it emits are authoritative. If the schema and this human-readable doc ever disagree, the schema wins.
 
@@ -56,7 +56,7 @@ Each `.json` is a single `Skin`:
 | `author`           | string | Artist-supplied author tag. May be empty.                                                                                                                                        |
 | `character_id`     | string | **Required.** The character this skin is bound to. Skin slot names key into that character's specific VRAM rects, so reusing a skin on a different character would miss/corrupt. |
 | `slots`            | object | Map of skin-slot name → slot payload. Same shape as paintjob slots (16 PSX colors + optional 4bpp pixels). Slot names are the character's derived skin slots (see below).        |
-| `vertex_overrides` | object | Map of gouraud-table index (string-encoded int) → RGB triple. Skin-only feature. Empty if the skin doesn't override any vertex colors.                                           |
+| `vertex_overrides` | object | Map of gouraud-table index (string-encoded int) → RGB triple. Empty if the skin doesn't override any vertex colors.                                                              |
 
 Skins are **character-bound and not portable**. The designer enforces this by:
 

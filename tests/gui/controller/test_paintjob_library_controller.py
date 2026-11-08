@@ -20,6 +20,7 @@ from paintjob_designer.models import (
     Paintjob,
     PaintjobLibrary,
     PsxColor,
+    Rgb888,
     SlotColors,
 )
 from paintjob_designer.paintjob.writer import PaintjobWriter
@@ -174,6 +175,39 @@ def test_apply_metadata_supports_unbinding_base_character(controller):
     ))
 
     assert controller.library.paintjobs[0].base_character_id is None
+
+
+def test_base_change_with_vertex_overrides_asks_first(controller, fake_message):
+    _seed_two_paintjobs(controller)
+    paintjob = controller.library.paintjobs[0]
+    paintjob.base_character_id = "oxide"
+    paintjob.vertex_overrides = {40: Rgb888(r=1, g=2, b=3)}
+    changes = []
+    controller.base_character_changed.connect(lambda *args: changes.append(args))
+    fake_message.confirm_destructive.return_value = False
+
+    controller.apply_metadata(0, MetadataEdit(name="renamed", author="", base_character_id="crash"))
+
+    assert paintjob.name == "renamed"
+    assert paintjob.base_character_id == "oxide"
+    assert paintjob.vertex_overrides == {40: Rgb888(r=1, g=2, b=3)}
+    assert changes == []
+
+    fake_message.confirm_destructive.return_value = True
+    controller.apply_metadata(0, MetadataEdit(name="renamed", author="", base_character_id="crash"))
+
+    assert paintjob.base_character_id == "crash"
+    assert paintjob.vertex_overrides == {}
+    assert changes == [(paintjob, "oxide", {40: Rgb888(r=1, g=2, b=3)})]
+
+
+def test_base_change_without_vertex_overrides_does_not_ask(controller, fake_message):
+    _seed_two_paintjobs(controller)
+
+    controller.apply_metadata(0, MetadataEdit(name="alpha", author="", base_character_id="crash"))
+
+    fake_message.confirm_destructive.assert_not_called()
+    assert controller.library.paintjobs[0].base_character_id == "crash"
 
 
 def test_apply_metadata_ignores_out_of_range_index(controller):

@@ -44,22 +44,36 @@ Each `.json` is a single `Paintjob`:
       "colors": ["#0000", "#7C00", "..."],
       "pixels": []
     }
+  },
+  "vertex_overrides": {
+    "51": { "r": 200, "g": 40, "b": 40 }
   }
 }
 ```
 
 ### Top-level fields
 
-| Field               | Type                       | Meaning                                                                                                                                                          |
-|---------------------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `schema_version`    | int                        | Always `2` currently. Consumers should reject newer versions they don't understand.                                                                              |
-| `name`              | string                     | Artist-supplied display name. May be empty.                                                                                                                      |
-| `author`            | string                     | Artist-supplied author tag. May be empty.                                                                                                                        |
-| `kart_type`         | `"kart"` \| `"hovercraft"` | Which vehicle class the paintjob targets. A kart paintjob can preview on any kart character, never on a hovercraft, and vice versa.                              |
-| `base_character_id` | string \| null             | Non-authoritative home-character hint. Used by the designer's preview fallback. Consumers may use it to infer default character bindings but aren't required to. |
-| `slots`             | object                     | Map of slot name → slot payload. Only kart-side slots appear here. Slot names are the profile's `kart_slots` names.                                              |
+| Field               | Type                       | Meaning                                                                                                                                                               |
+|---------------------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `schema_version`    | int                        | Always `2` currently. Consumers should reject newer versions they don't understand.                                                                                   |
+| `name`              | string                     | Artist-supplied display name. May be empty.                                                                                                                           |
+| `author`            | string                     | Artist-supplied author tag. May be empty.                                                                                                                             |
+| `kart_type`         | `"kart"` \| `"hovercraft"` | Which vehicle class the paintjob targets. A kart paintjob can preview on any kart character, never on a hovercraft, and vice versa.                                   |
+| `base_character_id` | string \| null             | Non-authoritative home-character hint. Used by the designer's preview fallback. Consumers may use it to infer default character bindings but aren't required to.      |
+| `slots`             | object                     | Map of slot name → slot payload. Only kart-side slots appear here. Slot names are the profile's `kart_slots` names.                                                   |
+| `vertex_overrides`  | object                     | Map of gouraud-table index (string-encoded int) → RGB triple. Applies only on `base_character_id`; see [Vertex overrides](#vertex-overrides). May be absent or empty. |
 
-Paintjobs are **kart-only and character-portable**. The designer enforces this by only seeding `kart_slots` from the profile when a paintjob is created and by hiding the skin-side scope from the Transform Colors panel in paintjob mode. The character bound to a skin (its `character_id`) and the character a paintjob lives "on" (its `base_character_id`) are entirely independent.
+Paintjobs are **kart-only**, and their CLUT slots are **character-portable**. The designer enforces this by only seeding `kart_slots` from the profile when a paintjob is created and by hiding the skin-side scope from the Transform Colors panel in paintjob mode. The character bound to a skin (its `character_id`) and the character a paintjob lives "on" (its `base_character_id`) are entirely independent.
+
+### Vertex overrides
+
+Kart surfaces are also colored by the character's gouraud table: untextured ones take the color directly, and textured ones are drawn as `texture × color × 2`. Each key in `vertex_overrides` is an index into that table, and each value has the same `r`, `g`, `b` (0–255) shape as a [skin's vertex overrides](skin_library_format.md#vertex-overrides).
+
+- **Consumers must apply these only when the paintjob is on its `base_character_id`.** Every character has its own table, so the same index is a different color on anyone else, where the kart keeps its baked colors. A paintjob with a null `base_character_id` has no usable overrides.
+- Indices not present keep the mesh's baked color.
+- If a skin overrides the same index on the same character, the skin wins, as the designer's preview does.
+- The field was added without changing `schema_version`. Files without it are valid, and a consumer that ignores it still draws the rest of the paintjob correctly, just with the baked colors on these surfaces.
+- The designer only offers indices the kart alone uses: those on faces textured with a kart-slot CLUT, plus the character's `kart_vertex_slots` in `config/profile.json`. Changing a paintjob's base character clears its overrides.
 
 ### Slot payload
 

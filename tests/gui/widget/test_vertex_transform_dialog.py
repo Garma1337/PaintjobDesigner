@@ -24,6 +24,15 @@ class TestVertexTransformScope:
         assert sorted(dialog._compute_overrides()) == [0, 2]
         assert "2 of 4" in dialog._intro.text()
 
+    def test_shared_checkbox_is_hidden_when_nothing_is_shared(self, qapp):
+        dialog = _dialog()
+        assert not dialog._include_kart.isHidden()
+
+        dialog.set_colors([Rgb888(r=200, g=40, b=40)] * 5, skin_indices={0, 1})
+
+        assert dialog._include_kart.isHidden()
+        assert sorted(dialog._compute_overrides()) == [0, 1]
+
     def test_shared_colors_can_be_included_but_kart_only_colors_never(self, qapp):
         dialog = _dialog()
         dialog._include_kart.setChecked(True)

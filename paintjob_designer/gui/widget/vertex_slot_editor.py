@@ -29,7 +29,7 @@ _DEFAULT_BORDER_CSS = (
 
 
 class VertexSlotEditor(QWidget):
-    """Per-vertex color editor for a Skin's gouraud override table."""
+    """Per-vertex color editor for an asset's gouraud override table."""
 
     color_edit_requested = Signal(int)
     vertex_reset_requested = Signal(int)
@@ -67,20 +67,26 @@ class VertexSlotEditor(QWidget):
         self._transform_button = QPushButton("Transform...")
         self._transform_button.setToolTip(
             "Apply Hue / Saturation / Brightness / RGB transforms to "
-            "every vertex color in the active skin.",
+            "the vertex colors listed here.",
         )
         self._transform_button.clicked.connect(self.transform_requested)
         button_row.addWidget(self._transform_button)
 
         self._reset_all_button = QPushButton("Reset all")
         self._reset_all_button.setToolTip(
-            "Drop every per-vertex override on the active skin and revert to "
-            "the character's baked gouraud colors.",
+            "Drop every per-vertex override on the active paintjob or skin and "
+            "revert to the character's baked gouraud colors.",
         )
         self._reset_all_button.clicked.connect(self.reset_all_requested)
         button_row.addWidget(self._reset_all_button)
         button_row.addStretch()
         outer.addLayout(button_row)
+
+        self._notice_label = QLabel()
+        self._notice_label.setWordWrap(True)
+        self._notice_label.setStyleSheet("color: #e0841e; padding: 4px 0;")
+        self._notice_label.hide()
+        outer.addWidget(self._notice_label)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -150,6 +156,11 @@ class VertexSlotEditor(QWidget):
         self._enabled = editable
         self._sync_enabled()
         self._sync_top_buttons()
+
+    def set_notice(self, text: str) -> None:
+        """Explain why the rows are read-only; an empty `text` hides it."""
+        self._notice_label.setText(text)
+        self._notice_label.setVisible(bool(text))
 
     def focused_index(self) -> int | None:
         return self._focused_index

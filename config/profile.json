@@ -160,7 +160,8 @@
         { "name": "exhaustmount", "clut": { "x": 976, "y": 255 } },
         { "name": "underfloor", "clut": { "x": 128, "y": 248 } },
         { "name": "steering", "clut": { "x": 480, "y": 262 } }
-      ]
+      ],
+      "kart_vertex_slots": [2, 3]
     },
     {
       "id": "pura",
@@ -183,7 +184,8 @@
         { "name": "exhaustmount", "clut": { "x": 976, "y": 255 } },
         { "name": "underfloor", "clut": { "x": 128, "y": 248 } },
         { "name": "steering", "clut": { "x": 480, "y": 262 } }
-      ]
+      ],
+      "kart_vertex_slots": [9, 10, 22]
     },
     {
       "id": "pinstripe",
@@ -252,7 +254,8 @@
         { "name": "exhaustmount", "clut": { "x": 976, "y": 255 } },
         { "name": "underfloor", "clut": { "x": 128, "y": 248 } },
         { "name": "steering", "clut": { "x": 480, "y": 262 } }
-      ]
+      ],
+      "kart_vertex_slots": [8, 9, 10, 19]
     },
     {
       "id": "joe",
@@ -275,7 +278,8 @@
         { "name": "exhaustmount", "clut": { "x": 976, "y": 255 } },
         { "name": "underfloor", "clut": { "x": 128, "y": 248 } },
         { "name": "steering", "clut": { "x": 480, "y": 262 } }
-      ]
+      ],
+      "kart_vertex_slots": [7, 19]
     },
     {
       "id": "tropy",
@@ -298,7 +302,8 @@
         { "name": "exhaustmount", "clut": { "x": 976, "y": 255 } },
         { "name": "underfloor", "clut": { "x": 128, "y": 248 } },
         { "name": "steering", "clut": { "x": 480, "y": 262 } }
-      ]
+      ],
+      "kart_vertex_slots": [0, 1, 2, 3]
     },
     {
       "id": "penta",
@@ -321,7 +326,8 @@
         { "name": "exhaustmount", "clut": { "x": 976, "y": 255 } },
         { "name": "underfloor", "clut": { "x": 128, "y": 248 } },
         { "name": "steering", "clut": { "x": 480, "y": 262 } }
-      ]
+      ],
+      "kart_vertex_slots": [1, 2, 33]
     },
     {
       "id": "fakecrash",
@@ -359,7 +365,8 @@
         { "name": "seat", "clut": { "x": 976, "y": 240 } },
         { "name": "exhaust", "clut": { "x": 496, "y": 257 } },
         { "name": "pipes", "clut": { "x": 976, "y": 241 } }
-      ]
+      ],
+      "kart_vertex_slots": [26, 37, 51, 57, 60]
     }
   ]
 }

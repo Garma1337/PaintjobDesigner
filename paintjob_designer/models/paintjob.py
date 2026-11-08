@@ -7,7 +7,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSeriali
 
 from paintjob_designer.constants import CLUT_PALETTE_SIZE
 from paintjob_designer.models.asset_library import AssetLibrary
-from paintjob_designer.models.color import PsxColor
+from paintjob_designer.models.color import PsxColor, Rgb888
 from paintjob_designer.models.profile import KartType
 
 """Canonical paintjob slot names for `KartType.KART` characters."""
@@ -76,6 +76,9 @@ class SlotColors(BaseModel):
 class Paintjob(BaseModel):
     """A single kart paintjob: one entry per kart slot, each 16 colors,
     optionally with custom textures.
+
+    `vertex_overrides` index the gouraud table of `base_character_id`. Every
+    character has its own table, so they don't carry over to other characters.
     """
 
     model_config = ConfigDict(frozen=False)
@@ -88,10 +91,22 @@ class Paintjob(BaseModel):
     kart_type: KartType = KartType.KART
     base_character_id: str | None = None
     slots: dict[str, SlotColors] = Field(default_factory=dict)
+    vertex_overrides: dict[int, Rgb888] = Field(default_factory=dict)
 
     def has_any_pixels(self) -> bool:
         """True when any slot carries imported pixel data."""
         return any(slot.pixels for slot in self.slots.values())
+
+    def vertex_overrides_for(self, character_id: str) -> dict[int, Rgb888]:
+        """The overrides that apply on `character_id`: none unless it's the base."""
+        return self.vertex_overrides if self.base_character_id == character_id else {}
+
+    def set_base_character(self, character_id: str | None) -> None:
+        """Changing the base drops the overrides, which index the old base's table."""
+        if character_id != self.base_character_id:
+            self.vertex_overrides.clear()
+
+        self.base_character_id = character_id
 
 
 class PaintjobLibrary(AssetLibrary[Paintjob]):

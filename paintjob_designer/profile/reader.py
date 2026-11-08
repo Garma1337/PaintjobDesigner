@@ -60,6 +60,7 @@ class ProfileReader:
             kart_slots=[
                 self._parse_slot(s) for s in raw.get(ProfileKey.KART_SLOTS, [])
             ],
+            kart_vertex_slots=[int(i) for i in raw.get(ProfileKey.KART_VERTEX_SLOTS, [])],
         )
 
     def _parse_slot(self, raw: dict) -> SlotProfile:

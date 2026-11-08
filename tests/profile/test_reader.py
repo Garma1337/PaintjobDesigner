@@ -89,6 +89,32 @@ class TestProfileReader:
         assert oxide.kart_type == KartType.HOVERCRAFT
         assert [s.name for s in oxide.kart_slots] == ["hoverkart"]
 
+    def test_parses_kart_vertex_slots(self, profile_reader):
+        doc = _profile_json(characters=[{
+            "id": "oxide",
+            "mesh_source": "oxide.ctr",
+            "kart_slots": [],
+            "kart_vertex_slots": [26, 37],
+        }])
+
+        assert profile_reader.read(doc).characters[0].kart_vertex_slots == [26, 37]
+
+    def test_kart_vertex_slots_default_to_empty(self, profile_reader):
+        assert profile_reader.read(_profile_json()).characters[0].kart_vertex_slots == []
+
+    def test_bundled_kart_vertex_slots(self, profile_reader):
+        profile = profile_reader.read(ProfileLoader.bundled_path().read_bytes())
+
+        assert {c.id: c.kart_vertex_slots for c in profile.characters if c.kart_vertex_slots} == {
+            "polar": [2, 3],
+            "pura": [9, 10, 22],
+            "roo": [8, 9, 10, 19],
+            "joe": [7, 19],
+            "tropy": [0, 1, 2, 3],
+            "penta": [1, 2, 33],
+            "oxide": [26, 37, 51, 57, 60],
+        }
+
     def test_rejects_unknown_kart_type(self, profile_reader):
         doc = _profile_json(characters=[{
             "id": "x",

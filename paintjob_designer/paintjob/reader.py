@@ -62,3 +62,6 @@ class PaintjobReader:
                     f"Slot {slot_name!r} must have exactly {SlotColors.SIZE} colors, "
                     f"got {len(colors_raw) if colors_raw is not None else 0}"
                 )
+
+        if not isinstance(raw.get(PaintjobKey.VERTEX_OVERRIDES, {}), dict):
+            raise ValueError("Paintjob 'vertex_overrides' must be an object")
