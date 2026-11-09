@@ -11,6 +11,7 @@ in vec3 v_vcolor;
 uniform sampler2D u_atlas;
 uniform int u_has_focus;
 uniform int u_alpha_from_color;
+uniform int u_shading;
 
 out vec4 out_color;
 
@@ -20,6 +21,9 @@ const float DIMMED_FACTOR = 0.22;
 
 vec3 apply_shade(vec3 base) {
     vec3 n = normalize(v_normal);
+    if (!gl_FrontFacing) {
+        n = -n;
+    }
     float lambert = max(dot(n, LIGHT_DIR), 0.0);
     float wrap = 0.5 + 0.5 * lambert;
     float factor = AMBIENT + (1.0 - AMBIENT) * wrap;
@@ -48,7 +52,7 @@ void main() {
         alpha = c.a;
     }
 
-    vec3 shaded = apply_shade(base);
+    vec3 shaded = u_shading == 1 ? apply_shade(base) : base;
     if (u_has_focus == 1 && v_highlight < 0.5) {
         shaded *= DIMMED_FACTOR;
     }

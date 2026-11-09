@@ -261,6 +261,10 @@ The undo history is session-wide and never auto-clears when you switch assets. I
 - **Wheel** — zoom in and out.
 - **R** — reset the view (same as **View → Reset Camera**). Reset returns to the framing the editor chose when the character loaded, not a blank world origin.
 
+### Shading
+
+The preview lights the model from a fixed direction so its shape is easy to read; surfaces facing away from the light are drawn up to about a quarter darker. The game doesn't do this, so **View → Shading** (also in the viewer's right-click menu) turns it off to show each surface at the exact color the game draws: texture × vertex color, or the vertex color alone on untextured faces. Any gradients left with shading off come from the vertex colors. The setting is remembered between sessions, and exported preview images follow it.
+
 ### Eyedropper
 
 **Right-click any surface on the 3D kart** to sample the slot and color under the cursor. The color picker opens pre-loaded with that color so one click + one pick changes the asset. If the click lands on a part of the model that isn't editable in the active mode (shared driver geometry in paintjob mode, kart slots in skin mode), the status bar says so and no picker opens. Right-clicking empty space or the wheels opens the viewer's context menu instead (see [Export Preview Image](#export-preview-image)).
@@ -285,7 +289,7 @@ The viewer also reads each triangle's PSX **blend mode** (Standard / Add / Subtr
 
 **File → Export Preview as Image...** (Ctrl+E) saves exactly what the 3D view currently shows (camera angle, zoom, animation frame and wheels) as an image. Pick the format in the save dialog: **PNG**, **JPEG** or **WebP**. PNG and WebP have a transparent background; JPEG can't store transparency, so it uses the viewer's background color instead. The image is automatically cropped to the kart, with no empty space around it. Resolution still follows the size of the 3D pane, so enlarge the window first for a bigger shot, and anything outside the pane's view is cut off. Slot-focus dimming from the slot editor is left out, so the whole kart always renders at full brightness.
 
-**Right-click an empty spot** in the 3D view (anywhere that isn't the kart body) for a quick menu with **Reset Camera** and **Export Preview as Image...**.
+**Right-click an empty spot** in the 3D view (anywhere that isn't the kart body) for a quick menu with **Reset Camera**, **Shading** and **Export Preview as Image...**.
 
 ### When the 3D View Doesn't Come Up
 

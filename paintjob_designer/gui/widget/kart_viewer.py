@@ -80,6 +80,8 @@ class KartViewer(QOpenGLWidget):
         self._uniform_atlas = -1
         self._uniform_has_focus = -1
         self._uniform_alpha_from_color = -1
+        self._uniform_shading = -1
+        self._shading = True
         self._transparent_background = False
         self._triangle_count = 0
         self._initialized = False
@@ -356,6 +358,11 @@ class KartViewer(QOpenGLWidget):
         r, g, b = self._BACKGROUND_RGB
         return round(r * 255), round(g * 255), round(b * 255)
 
+    def set_shading(self, enabled: bool) -> None:
+        """Toggle the preview-only lighting; off shows the flat colors the game draws."""
+        self._shading = enabled
+        self.update()
+
     def capture_rgba(self) -> tuple[bytes, int, int] | None:
         """Render the current view offscreen and return (rgba, width, height).
 
@@ -405,6 +412,7 @@ class KartViewer(QOpenGLWidget):
             self._uniform_atlas = GL.glGetUniformLocation(self._program, "u_atlas")
             self._uniform_has_focus = GL.glGetUniformLocation(self._program, "u_has_focus")
             self._uniform_alpha_from_color = GL.glGetUniformLocation(self._program, "u_alpha_from_color")
+            self._uniform_shading = GL.glGetUniformLocation(self._program, "u_shading")
 
             self._vao = GL.glGenVertexArrays(1)
             self._vbo_pos = GL.glGenBuffers(1)
@@ -480,6 +488,7 @@ class KartViewer(QOpenGLWidget):
         GL.glUniformMatrix4fv(self._uniform_mvp, 1, GL.GL_TRUE, mvp.astype(np.float32))
         GL.glUniform1i(self._uniform_has_focus, 1 if self._has_focus else 0)
         GL.glUniform1i(self._uniform_alpha_from_color, 0)
+        GL.glUniform1i(self._uniform_shading, 1 if self._shading else 0)
 
         GL.glActiveTexture(GL.GL_TEXTURE0)
         GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture)
@@ -510,8 +519,10 @@ class KartViewer(QOpenGLWidget):
 
         GL.glDisable(GL.GL_BLEND)
         GL.glDepthMask(GL.GL_TRUE)
+        GL.glUniform1i(self._uniform_shading, 0)
         GL.glBindVertexArray(self._wheel_vao)
         GL.glDrawArrays(GL.GL_TRIANGLES, 0, self._wheel_vertex_count)
+        GL.glUniform1i(self._uniform_shading, 1 if self._shading else 0)
 
     def _build_wheels(self) -> tuple[np.ndarray, np.ndarray]:
         positions: list[np.ndarray] = []

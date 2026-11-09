@@ -44,6 +44,13 @@ class TestLoad:
 
         assert cfg.iso_root == "/iso/root"
 
+    def test_shading_round_trips_and_defaults_on(self, config_store):
+        assert config_store.load().shading is True
+
+        config_store.save(AppConfig(shading=False))
+
+        assert config_store.load().shading is False
+
     def test_non_object_json_falls_back_to_default(self, config_store, config_path):
         config_path.write_text(json.dumps([1, 2, 3]))
 

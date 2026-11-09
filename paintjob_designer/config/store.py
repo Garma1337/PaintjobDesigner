@@ -14,6 +14,7 @@ class AppConfig:
     palettes: list[dict] = field(default_factory=list)
     skins: dict | None = None
     wheels: dict | None = None
+    shading: bool = True
 
 
 class ConfigStore:
@@ -41,6 +42,7 @@ class ConfigStore:
             palettes=self.coerce_palettes(raw.get("palettes")),
             skins=self.coerce_library(raw.get("skins")),
             wheels=self.coerce_library(raw.get("wheels")),
+            shading=raw.get("shading", True) is not False,
         )
 
     def save(self, config: AppConfig) -> None:
@@ -49,6 +51,7 @@ class ConfigStore:
         data: dict[str, Any] = {
             "iso_root": config.iso_root,
             "palettes": list(config.palettes),
+            "shading": config.shading,
         }
 
         if config.library is not None:

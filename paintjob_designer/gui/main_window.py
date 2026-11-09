@@ -400,6 +400,10 @@ class MainWindow(QMainWindow):
             view_menu, "Reset &Camera", self._on_reset_camera,
             shortcut=QKeySequence("R"),
         )
+        self._shading_action = self._add_action(view_menu, "&Shading", self._on_shading_toggled)
+        self._shading_action.setCheckable(True)
+        self._shading_action.setChecked(self._config.shading)
+        self._kart_viewer.set_shading(self._config.shading)
 
     def _add_action(
         self,
@@ -919,12 +923,23 @@ class MainWindow(QMainWindow):
         label = f"Apply palette '{palette.name or '(unnamed)'}' to {slot_name}"
         self._undo_stack.push(BulkTransformCommand(self, label, edits))
 
+    def _on_shading_toggled(self, enabled: bool) -> None:
+        self._kart_viewer.set_shading(enabled)
+        self._config.shading = enabled
+        try:
+            self._config_store.save(self._config)
+        except OSError:
+            self.statusBar().showMessage(
+                "Couldn't save the shading setting — check disk space / permissions.", 4000,
+            )
+
     def _on_reset_camera(self) -> None:
         self._kart_viewer.reset_camera()
 
     def _on_viewer_context_menu(self, global_pos: QPoint) -> None:
         menu = QMenu(self)
         menu.addAction(self._reset_camera_action)
+        menu.addAction(self._shading_action)
         menu.addAction(self._export_preview_action)
         menu.exec(global_pos)
         menu.deleteLater()

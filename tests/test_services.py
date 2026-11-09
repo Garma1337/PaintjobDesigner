@@ -1,5 +1,6 @@
 # coding: utf-8
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -20,10 +21,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _modules_after(statement: str) -> set[str]:
-    """`sys.modules` of a fresh interpreter that ran `statement`."""
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     result = subprocess.run(
         [sys.executable, "-c", f"import sys; {statement}; print(*sys.modules)"],
-        capture_output=True, text=True, check=True, cwd=_REPO_ROOT,
+        capture_output=True, text=True, check=True, cwd=_REPO_ROOT, env=env,
     )
 
     return set(result.stdout.split())
@@ -65,6 +66,19 @@ class TestWiring:
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
 
         assert window.findChildren(QMenu, options=Qt.FindChildOption.FindDirectChildrenOnly) == []
+        window.deleteLater()
+
+
+class TestShadingToggle:
+
+    def test_toggle_reaches_the_viewer_and_persists(self, fresh_services):
+        window = MainWindow(fresh_services)
+        window._kart_viewer = MagicMock()
+
+        window._shading_action.trigger()
+
+        window._kart_viewer.set_shading.assert_called_once_with(False)
+        assert fresh_services.resolve("config_store").load().shading is False
         window.deleteLater()
 
 
